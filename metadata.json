@@ -1,0 +1,6 @@
+{
+  "name": "Association Football Maroc - Gestion & Finances",
+  "description": "Plateforme web professionnelle de gestion pour académie et club de football au Maroc : joueurs, parents, équipes, cotisations en DH, impayés, reçus officiels, présences et rapports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
