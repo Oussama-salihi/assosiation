@@ -18,9 +18,12 @@ import {
   createSecureSession,
   isSessionValid,
   ROLE_PERMISSIONS,
+  canParentAccessChild,
+  validateAbsenceNotificationInput,
+  validateParentMessageInput,
 } from '../src/utils/security';
 import { sanitizeUser } from '../src/services/firebaseAuth';
-import { User, Player, Team } from '../src/types';
+import { User, Player, Team, UserRole } from '../src/types';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -84,8 +87,8 @@ describe('3. A staff user cannot promote themselves to administrator', () => {
   test('Self-role modification logic detects and rejects privilege escalation', () => {
     const staffUserId = 'usr-staff-1';
     const targetUserId = 'usr-staff-1';
-    const requestedRole = 'ADMIN';
-    const currentRole = 'STAFF';
+    const requestedRole: string = 'ADMIN';
+    const currentRole: string = 'STAFF';
 
     const isSelfRoleChange = targetUserId === staffUserId && requestedRole !== currentRole;
     assert.strictEqual(isSelfRoleChange, true, 'Self role change attempt detected');
@@ -240,3 +243,120 @@ describe('12. French and Arabic interfaces preserve identical security protectio
     assert.strictEqual(permissions.canManageUsers, false);
   });
 });
+
+describe('13. Role-based access control strictly isolates parent accounts', () => {
+  test('Parent role permissions forbid administrative, technical, and financial modification', () => {
+    const parentPermissions = ROLE_PERMISSIONS['PARENT'];
+    assert.strictEqual(parentPermissions.canManageUsers, false, 'Parent cannot manage users');
+    assert.strictEqual(parentPermissions.canManageSettings, false, 'Parent cannot manage club settings');
+    assert.strictEqual(parentPermissions.canManageFinancials, false, 'Parent cannot manage or edit financial records');
+    assert.strictEqual(parentPermissions.canManageAllTeams, false, 'Parent cannot manage teams');
+    assert.strictEqual(parentPermissions.canManageAllPlayers, false, 'Parent cannot manage players');
+    assert.strictEqual(parentPermissions.canDeleteEntities, false, 'Parent cannot delete entities');
+    assert.strictEqual(parentPermissions.canExportData, false, 'Parent cannot export database records');
+    assert.strictEqual(parentPermissions.canViewAuditLogs, false, 'Parent cannot view audit logs');
+  });
+});
+
+describe('14. Anti-IDOR (Insecure Direct Object Reference) protection for Parent Portal', () => {
+  test('canParentAccessChild permits only records matching the parent ID', () => {
+    const parentAId = 'par-1';
+    const parentBId = 'par-2';
+
+    const childOfParentA = 'par-1';
+    const childOfParentB = 'par-2';
+
+    assert.strictEqual(
+      canParentAccessChild(parentAId, childOfParentA),
+      true,
+      'Parent A must be authorized to access Child of Parent A'
+    );
+
+    assert.strictEqual(
+      canParentAccessChild(parentAId, childOfParentB),
+      false,
+      'Parent A must be denied access to Child of Parent B (IDOR prevention)'
+    );
+
+    assert.strictEqual(
+      canParentAccessChild(undefined, childOfParentA),
+      false,
+      'Undefined parent must be rejected'
+    );
+
+    assert.strictEqual(
+      canParentAccessChild(parentAId, undefined),
+      false,
+      'Undefined child relation must be rejected'
+    );
+  });
+});
+
+describe('15. Absence notification and communication input validation', () => {
+  test('validateAbsenceNotificationInput rejects empty fields and invalid dates', () => {
+    // Missing parentId
+    assert.strictEqual(
+      validateAbsenceNotificationInput({ playerId: 'ply-1', sessionDate: '2026-10-15', reason: 'Maladie' }).isValid,
+      false
+    );
+
+    // Missing playerId
+    assert.strictEqual(
+      validateAbsenceNotificationInput({ parentId: 'par-1', sessionDate: '2026-10-15', reason: 'Maladie' }).isValid,
+      false
+    );
+
+    // Invalid date format
+    assert.strictEqual(
+      validateAbsenceNotificationInput({ parentId: 'par-1', playerId: 'ply-1', sessionDate: '15/10/2026', reason: 'Maladie' }).isValid,
+      false
+    );
+
+    // Missing reason
+    assert.strictEqual(
+      validateAbsenceNotificationInput({ parentId: 'par-1', playerId: 'ply-1', sessionDate: '2026-10-15' }).isValid,
+      false
+    );
+
+    // Valid input
+    assert.strictEqual(
+      validateAbsenceNotificationInput({ parentId: 'par-1', playerId: 'ply-1', sessionDate: '2026-10-15', reason: 'Maladie' }).isValid,
+      true
+    );
+  });
+
+  test('validateParentMessageInput rejects short subjects and empty messages', () => {
+    assert.strictEqual(
+      validateParentMessageInput({ parentId: 'par-1', subject: 'hi', message: 'Hello team' }).isValid,
+      false,
+      'Subject shorter than 3 characters must be rejected'
+    );
+
+    assert.strictEqual(
+      validateParentMessageInput({ parentId: 'par-1', subject: 'Question', message: 'Hi' }).isValid,
+      false,
+      'Message shorter than 5 characters must be rejected'
+    );
+
+    assert.strictEqual(
+      validateParentMessageInput({ parentId: 'par-1', subject: 'Attestation de licence', message: 'Bonjour, pourriez-vous me transmettre une attestation ?' }).isValid,
+      true
+    );
+  });
+});
+
+describe('16. Firestore security rules enforce parent-scoped access and prevent cross-family leaks', () => {
+  test('firestore.rules defines isParent, getParentId, and scoped player/payment access', () => {
+    const rulesPath = path.resolve(process.cwd(), 'firestore.rules');
+    assert.strictEqual(fs.existsSync(rulesPath), true, 'firestore.rules must exist');
+    const content = fs.readFileSync(rulesPath, 'utf-8');
+
+    assert.strictEqual(content.includes('function isParent()'), true, 'Rules must define isParent helper');
+    assert.strictEqual(content.includes('function getParentId()'), true, 'Rules must define getParentId helper');
+    assert.strictEqual(content.includes('!isParent() || resource.data.parentId == getParentId()'), true, 'Rules must enforce parentId matching on players');
+    assert.strictEqual(content.includes('absenceNotifications'), true, 'Rules must define absenceNotifications subcollection');
+    assert.strictEqual(content.includes('parentMessages'), true, 'Rules must define parentMessages subcollection');
+    assert.strictEqual(content.includes('announcements'), true, 'Rules must define announcements subcollection');
+  });
+});
+

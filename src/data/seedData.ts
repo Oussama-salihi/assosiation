@@ -10,7 +10,10 @@ import {
   TrainingSession, 
   AttendanceRecord, 
   User, 
-  AuditLog 
+  AuditLog,
+  Announcement,
+  AbsenceNotification,
+  ParentMessage
 } from '../types';
 
 export const INITIAL_SETTINGS: AssociationSettings = {
@@ -83,6 +86,28 @@ export const INITIAL_USERS: User[] = [
     phone: '+212 6 65 44 55 66',
     active: true,
     createdAt: '2026-03-01T08:30:00Z',
+  },
+  {
+    id: 'usr-par-1',
+    name: 'Mohamed Amrani',
+    email: 'parent@asatlasfoot.ma',
+    password: 'Atlas2026!',
+    role: 'PARENT',
+    parentId: 'par-1',
+    phone: '+212 6 61 11 22 33',
+    active: true,
+    createdAt: '2026-03-01T10:00:00Z',
+  },
+  {
+    id: 'usr-par-2',
+    name: 'Fatima Zahra Bennani',
+    email: 'parent.bennani@asatlasfoot.ma',
+    password: 'Atlas2026!',
+    role: 'PARENT',
+    parentId: 'par-2',
+    phone: '+212 6 62 44 55 66',
+    active: true,
+    createdAt: '2026-03-02T11:00:00Z',
   },
 ];
 
@@ -198,6 +223,8 @@ export const INITIAL_PARENTS: Parent[] = [
     address: '14 Rue Jean Jaurès, Maarif, Casablanca',
     relation: 'Père',
     notes: 'Père très impliqué, délégué des parents U11',
+    accountStatus: 'Active',
+    userId: 'usr-par-1',
     createdAt: '2026-01-15T10:00:00Z',
   },
   {
@@ -210,6 +237,8 @@ export const INITIAL_PARENTS: Parent[] = [
     address: '88 Boulevard Franklin Roosevelt, Racine, Casablanca',
     relation: 'Mère',
     notes: 'Préfère les communications par WhatsApp',
+    accountStatus: 'Active',
+    userId: 'usr-par-2',
     createdAt: '2026-01-16T11:00:00Z',
   },
   {
@@ -964,3 +993,87 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     timestamp: '2026-10-05T19:15:00Z',
   },
 ];
+
+export const INITIAL_ANNOUNCEMENTS: Announcement[] = [
+  {
+    id: 'ann-1',
+    title: 'Reprise des séances & Réunion d’information des parents',
+    titleAr: 'استئناف التداريب والاجتماع التواصلي مع أولياء الأمور',
+    content: 'Toute l’équipe de l’AS Atlas Foot vous souhaite une excellente rentrée sportive. Une réunion d’échange aura lieu le samedi 18 octobre à 18h30 à la salle polyvalente du Complexe Al Amal pour présenter le programme technique et le calendrier de la saison.',
+    contentAr: 'يسر أسرة الجمعية الرياضية أطلس لكرة القدم الترحيب بجميع اللاعبين وأولياء الأمور. يُعقد لقاء تواصلي يوم السبت 18 أكتوبر على الساعة 18:30 بالقاعة المتعددة التخصصات بمركب الأمل لتقديم البرنامج الفني وبرمجة الموسم.',
+    type: 'GENERAL',
+    authorName: 'Ahmed Bennani',
+    authorRole: 'Direction Générale',
+    createdAt: '2026-10-08T10:00:00Z',
+    important: true,
+  },
+  {
+    id: 'ann-2',
+    title: 'Plateau amical U9 & U11 ce samedi au Stade Al Amal',
+    titleAr: 'دوري ودي لفئتي أقل من 9 و 11 سنة هذا السبت',
+    content: 'Matchs amicaux préparatoires contre l’Académie Étoiles de Casablanca. Rendez-vous sur le terrain synthétique à 14h15 munis de la tenue complète officielle (maillot rouge et vert, protège-tibias obligatoires).',
+    contentAr: 'مباريات ودية إعدادية ضد أكاديمية نجوم الدار البيضاء. التجمع بالملعب الملحق على الساعة 14:15 مع ارتداء الزي الرسمي الكامل وواقيات الساق الإلزامية.',
+    type: 'EQUIPE',
+    teamId: 'team-3', // U11
+    authorName: 'Coach Rachid Benmahmoud',
+    authorRole: 'Responsable Pédagogique U11',
+    createdAt: '2026-10-09T14:30:00Z',
+    important: false,
+  },
+  {
+    id: 'ann-3',
+    title: 'Dispositif intempéries & Terrains couverts',
+    titleAr: 'تنبيه الأحوال الجوية واستعمال الملاعب المغطاة',
+    content: 'En cas de fortes pluies annoncées sur Casablanca, les entraînements sont maintenus et basculent automatiquement sur la halle couverte du complexe. Aucun entraînement n’est annulé sauf alerte météo officielle de la wilaya.',
+    contentAr: 'في حالة تهاطل الأمطار بالدار البيضاء، تظل الحصص التدريبية قائمة ويتم تحويلها تلقائياً إلى القاعة المغطاة بالمركب. لا تلغى التداريب إلا بنشرة إنذارية رسمية.',
+    type: 'URGENT',
+    authorName: 'Oussama Bennis',
+    authorRole: 'Secrétariat Général',
+    createdAt: '2026-10-10T09:00:00Z',
+    important: true,
+  },
+];
+
+export const INITIAL_ABSENCE_NOTIFICATIONS: AbsenceNotification[] = [
+  {
+    id: 'abs-1',
+    parentId: 'par-1',
+    playerId: 'ply-2', // Adam Amrani
+    sessionDate: '2026-10-14',
+    reason: 'Études / Examens',
+    notes: 'Contrôle continu de mathématiques prévu le lendemain, impossibilité de participer à la séance de 16h30.',
+    status: 'Approuvé',
+    createdAt: '2026-10-09T18:00:00Z',
+    responseNote: 'Bien noté, bon courage à Adam pour son devoir !',
+    reviewedBy: 'Coach Tarik Sektioui',
+    reviewedAt: '2026-10-10T09:30:00Z',
+  },
+  {
+    id: 'abs-2',
+    parentId: 'par-1',
+    playerId: 'ply-1', // Youssef Amrani
+    sessionDate: '2026-10-21',
+    reason: 'Familial',
+    notes: 'Déplacement familial à Rabat pour le weekend.',
+    status: 'En attente',
+    createdAt: '2026-10-11T12:00:00Z',
+  },
+];
+
+export const INITIAL_PARENT_MESSAGES: ParentMessage[] = [
+  {
+    id: 'msg-1',
+    parentId: 'par-1',
+    parentName: 'Mohamed Amrani',
+    parentEmail: 'parent@asatlasfoot.ma',
+    parentPhone: '+212 6 61 11 22 33',
+    playerId: 'ply-1',
+    subject: 'Commande de survêtement d’hiver U11',
+    message: 'Bonjour, je souhaiterais savoir quand nous pourrons commander le pack survêtement et veste de pluie pour Youssef. Merci d’avance.',
+    status: 'Répondu',
+    createdAt: '2026-10-06T15:20:00Z',
+    response: 'Bonjour M. Amrani, les essayages auront lieu du 15 au 20 octobre au secrétariat du club. Vous pourrez commander sur place.',
+    respondedAt: '2026-10-07T10:15:00Z',
+  },
+];
+

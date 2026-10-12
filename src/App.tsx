@@ -7,6 +7,7 @@ import { Header } from './components/layout/Header';
 import { ToastContainer } from './components/common/ToastContainer';
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { LoginPage } from './components/auth/LoginPage';
+import { ParentPortalLayout } from './components/parent/ParentPortalLayout';
 
 // Views
 import { DashboardView } from './components/views/DashboardView';
@@ -111,6 +112,16 @@ function MainApp() {
   // Not authenticated => Route protection: Render Login Page
   if (!isAuthenticated) {
     return <LoginPage />;
+  }
+
+  // Parent Role => Dedicated Parent Portal Experience
+  if (currentUser?.role === 'PARENT') {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900">
+        <ParentPortalLayout />
+        <ToastContainer />
+      </div>
+    );
   }
 
   // Navigation router with parameter handling

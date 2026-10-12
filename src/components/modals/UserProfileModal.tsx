@@ -21,6 +21,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     COMPTABLE: 'Accès aux modules financiers, impayés, encaissements et reçus.',
     ENTRAINEUR: 'Gestion technique des équipes assignées, séances et feuilles de présence.',
     STAFF: 'Consultation des joueurs, parents et inscriptions des nouveaux adhérents.',
+    PARENT: 'Portail parents : suivi des enfants inscrits, planning des séances, présences, cotisations et reçus officiels.',
   };
 
   return (

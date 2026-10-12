@@ -9,10 +9,23 @@ export const LoginPage: React.FC = () => {
   const { settings } = useApp();
   const { t, language, setLanguage, isRTL } = useLanguage();
 
+  const [loginPortalType, setLoginPortalType] = useState<'parent' | 'staff'>('staff');
   const [email, setEmail] = useState('direction@asatlasfoot.ma');
   const [password, setPassword] = useState('Atlas2026!');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Switch portal tab
+  const handleSwitchPortal = (type: 'parent' | 'staff') => {
+    setLoginPortalType(type);
+    setError(null);
+    if (type === 'parent') {
+      setEmail('parent@asatlasfoot.ma');
+    } else {
+      setEmail('direction@asatlasfoot.ma');
+    }
+    setPassword('Atlas2026!');
+  };
 
   // Forgot password modal
   const [showForgotModal, setShowForgotModal] = useState<boolean>(false);
@@ -22,17 +35,35 @@ export const LoginPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return; // Empêcher les soumissions multiples
     setError(null);
     setIsLoading(true);
 
-    const result = await login(email, password);
-    setIsLoading(false);
+    try {
+      const cleanEmail = email.trim();
+      if (!cleanEmail) {
+        setError(language === 'ar' ? 'يرجى إدخال البريد الإلكتروني.' : 'Veuillez saisir votre adresse email.');
+        setIsLoading(false);
+        return;
+      }
+      if (!password) {
+        setError(language === 'ar' ? 'يرجى إدخال كلمة المرور.' : 'Veuillez saisir votre mot de passe.');
+        setIsLoading(false);
+        return;
+      }
 
-    if (!result.success) {
-      setError(
-        result.error ||
-          (language === 'ar' ? 'البيانات المدخلة غير صحيحة.' : 'Identifiants incorrects.')
-      );
+      const result = await login(cleanEmail, password);
+      if (!result.success) {
+        setError(
+          result.error ||
+            (language === 'ar' ? 'البيانات المدخلة غير صحيحة.' : 'Identifiants ou mot de passe incorrects.')
+        );
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Une erreur inattendue est survenue lors de la connexion.';
+      setError(msg);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -120,7 +151,47 @@ export const LoginPage: React.FC = () => {
         </div>
 
         {/* Card Form */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-5">
+          {/* Portal Switcher Tabs */}
+          <div className="flex p-1 bg-slate-100 rounded-xl">
+            <button
+              type="button"
+              onClick={() => handleSwitchPortal('staff')}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                loginPortalType === 'staff'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {language === 'ar' ? 'الإدارة والطاقم' : 'Staff & Direction'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwitchPortal('parent')}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                loginPortalType === 'parent'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {language === 'ar' ? 'فضاء أولياء الأمور' : 'Portail Parents'}
+            </button>
+          </div>
+
+          {loginPortalType === 'staff' ? (
+            <p className="text-[11px] text-slate-500 text-center leading-relaxed">
+              {language === 'ar'
+                ? 'فضاء الإدارة، المدربين، المحاسبة ومسؤولي الجمعية الرياضية.'
+                : 'Accès réservé à la direction, aux éducateurs et au secrétariat.'}
+            </p>
+          ) : (
+            <p className="text-[11px] text-slate-500 text-center leading-relaxed">
+              {language === 'ar'
+                ? 'فضاء مخصص لأولياء أمور وتلاميذ الجمعية لمتابعة التداريب، الغيابات والاشتراكات.'
+                : 'Accès sécurisé réservé aux parents et tuteurs des jeunes adhérents du club.'}
+            </p>
+          )}
+
           {error && (
             <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -203,16 +274,64 @@ export const LoginPage: React.FC = () => {
               {t('auth.testAccounts', "Comptes d'accès préconfigurés")}
             </summary>
             <div className="mt-2.5 space-y-1.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200/70">
-              <div className="flex justify-between items-center">
-                <span className="font-semibold text-slate-700">
+              <div className="flex justify-between items-center bg-slate-100/90 p-1.5 rounded-lg border border-slate-200">
+                <span className="font-bold text-slate-900">
                   {t('auth.superAdmin', 'Direction (Super Admin)')}
                 </span>
                 <button
                   type="button"
-                  onClick={() => fillQuickCredentials('direction@asatlasfoot.ma')}
-                  className="text-emerald-700 hover:underline font-mono text-[10px] cursor-pointer"
+                  onClick={() => {
+                    handleSwitchPortal('staff');
+                    fillQuickCredentials('direction@asatlasfoot.ma');
+                  }}
+                  className="text-emerald-700 hover:underline font-mono text-[10px] font-bold cursor-pointer"
                 >
                   direction@asatlasfoot.ma
+                </button>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-slate-700">
+                  {t('auth.accountant', 'Comptabilité')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleSwitchPortal('staff');
+                    fillQuickCredentials('compta@asatlasfoot.ma');
+                  }}
+                  className="text-emerald-700 hover:underline font-mono text-[10px] cursor-pointer"
+                >
+                  compta@asatlasfoot.ma
+                </button>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-slate-700">
+                  {t('auth.coach', 'Coach Rachid')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleSwitchPortal('staff');
+                    fillQuickCredentials('rachid.coach@asatlasfoot.ma');
+                  }}
+                  className="text-emerald-700 hover:underline font-mono text-[10px] cursor-pointer"
+                >
+                  rachid.coach@asatlasfoot.ma
+                </button>
+              </div>
+              <div className="flex justify-between items-center bg-emerald-50/80 p-1.5 rounded-lg border border-emerald-200/60">
+                <span className="font-semibold text-emerald-950">
+                  {language === 'ar' ? 'ولي أمر (محمد العمراني)' : 'Parent (Mohamed Amrani)'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleSwitchPortal('parent');
+                    fillQuickCredentials('parent@asatlasfoot.ma');
+                  }}
+                  className="text-emerald-700 hover:underline font-mono text-[10px] font-bold cursor-pointer"
+                >
+                  parent@asatlasfoot.ma
                 </button>
               </div>
               <div className="flex justify-between items-center">

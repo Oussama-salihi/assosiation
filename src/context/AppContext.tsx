@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { validatePaymentInput } from '../utils/security';
+import {
+  validatePaymentInput,
+  validateAbsenceNotificationInput,
+  validateParentMessageInput,
+  hashPassword,
+} from '../utils/security';
 import {
   Player,
   Parent,
@@ -15,6 +20,11 @@ import {
   AssociationSettings,
   PlayerFinancialSummary,
   UserRole,
+  Announcement,
+  AbsenceNotification,
+  AbsenceReason,
+  AbsenceNotificationStatus,
+  ParentMessage,
 } from '../types';
 import {
   INITIAL_SETTINGS,
@@ -29,6 +39,9 @@ import {
   INITIAL_SESSIONS,
   INITIAL_ATTENDANCES,
   INITIAL_AUDIT_LOGS,
+  INITIAL_ANNOUNCEMENTS,
+  INITIAL_ABSENCE_NOTIFICATIONS,
+  INITIAL_PARENT_MESSAGES,
 } from '../data/seedData';
 
 interface Toast {
@@ -52,6 +65,9 @@ interface AppContextType {
   sessions: TrainingSession[];
   attendances: AttendanceRecord[];
   auditLogs: AuditLog[];
+  announcements: Announcement[];
+  absenceNotifications: AbsenceNotification[];
+  parentMessages: ParentMessage[];
   
   // Toasts
   toasts: Toast[];
@@ -108,6 +124,57 @@ interface AppContextType {
   updateUser: (id: string, updates: Partial<User>) => void;
   resetToSeedData: () => void;
 
+  // Parent Portal & Club Communications
+  addAbsenceNotification: (data: {
+    parentId: string;
+    playerId: string;
+    sessionDate: string;
+    sessionId?: string;
+    reason: AbsenceReason;
+    notes?: string;
+  }) => { success: boolean; error?: string };
+  updateAbsenceNotificationStatus: (
+    id: string,
+    status: AbsenceNotificationStatus,
+    responseNote?: string
+  ) => void;
+  sendParentMessage: (data: {
+    parentId: string;
+    parentName: string;
+    parentEmail?: string;
+    parentPhone?: string;
+    playerId?: string;
+    subject: string;
+    message: string;
+  }) => { success: boolean; error?: string };
+  updateParentMessageStatus: (
+    id: string,
+    status: 'Non lu' | 'Lu' | 'Répondu',
+    response?: string
+  ) => void;
+  addAnnouncement: (announcement: Omit<Announcement, 'id' | 'createdAt' | 'authorName'>) => Announcement;
+  deleteAnnouncement: (id: string) => void;
+  createParentAccount: (
+    parentId: string,
+    email: string,
+    password?: string
+  ) => Promise<{ success: boolean; error?: string; user?: User }>;
+  resetParentPassword: (
+    parentId: string
+  ) => Promise<{ success: boolean; error?: string; tempPassword?: string }>;
+  linkChildToParent: (playerId: string, parentId: string) => void;
+  unlinkChildFromParent: (playerId: string) => void;
+
+  // Parent Portal Relational Helpers (Strictly Scoped)
+  getParentLinkedPlayers: (parentId: string) => Player[];
+  getParentPayments: (parentId: string) => Payment[];
+  getParentReceipts: (parentId: string) => Receipt[];
+  getParentSessions: (parentId: string) => TrainingSession[];
+  getParentAttendanceRecords: (parentId: string) => AttendanceRecord[];
+  getParentAnnouncements: (parentId: string) => Announcement[];
+  getParentAbsenceNotifications: (parentId: string) => AbsenceNotification[];
+  getParentMessages: (parentId: string) => ParentMessage[];
+
   // Relational Helpers
   getPlayerFinancials: (playerId: string) => PlayerFinancialSummary;
   getParentFinancials: (parentId: string) => { expected: number; paid: number; remaining: number; childrenCount: number };
@@ -144,13 +211,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const [settings, setSettings] = useState<AssociationSettings>(() => loadState('settings', INITIAL_SETTINGS));
-  const [users, setUsers] = useState<User[]>(() => loadState('users', INITIAL_USERS));
+  const [users, setUsers] = useState<User[]>(() => {
+    const list = loadState<User[]>('users', INITIAL_USERS);
+    // Fusionner les comptes de base s'ils sont absents de la sauvegarde locale
+    const existingEmails = new Set(list.map((u) => u.email?.toLowerCase()));
+    const missing = INITIAL_USERS.filter((u) => !existingEmails.has(u.email?.toLowerCase()));
+    if (missing.length > 0) {
+      return [...list, ...missing];
+    }
+    return list;
+  });
   const [currentUser, setCurrentUserState] = useState<User>(() => {
-    const list = loadState('users', INITIAL_USERS);
+    const list = loadState<User[]>('users', INITIAL_USERS);
     return list[0] || INITIAL_USERS[0];
   });
   const [teams, setTeams] = useState<Team[]>(() => loadState('teams', INITIAL_TEAMS));
-  const [parents, setParents] = useState<Parent[]>(() => loadState('parents', INITIAL_PARENTS));
+  const [parents, setParents] = useState<Parent[]>(() => {
+    const list = loadState<Parent[]>('parents', INITIAL_PARENTS);
+    // Assurer la liaison des tuteurs initiaux
+    return list.map((p) => {
+      if (p.id === 'par-1' && !p.userId) {
+        return { ...p, userId: 'usr-par-1', accountStatus: 'Active' as const };
+      }
+      if (p.id === 'par-2' && !p.userId) {
+        return { ...p, userId: 'usr-par-2', accountStatus: 'Active' as const };
+      }
+      return p;
+    });
+  });
   const [players, setPlayers] = useState<Player[]>(() => loadState('players', INITIAL_PLAYERS));
   const [plans, setPlans] = useState<MembershipPlan[]>(() => loadState('plans', INITIAL_PLANS));
   const [registrations, setRegistrations] = useState<Registration[]>(() => loadState('registrations', INITIAL_REGISTRATIONS));
@@ -159,6 +247,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [sessions, setSessions] = useState<TrainingSession[]>(() => loadState('sessions', INITIAL_SESSIONS));
   const [attendances, setAttendances] = useState<AttendanceRecord[]>(() => loadState('attendances', INITIAL_ATTENDANCES));
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => loadState('auditLogs', INITIAL_AUDIT_LOGS));
+  const [announcements, setAnnouncements] = useState<Announcement[]>(() => loadState('announcements', INITIAL_ANNOUNCEMENTS));
+  const [absenceNotifications, setAbsenceNotifications] = useState<AbsenceNotification[]>(() => loadState('absenceNotifications', INITIAL_ABSENCE_NOTIFICATIONS));
+  const [parentMessages, setParentMessages] = useState<ParentMessage[]>(() => loadState('parentMessages', INITIAL_PARENT_MESSAGES));
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   // Persistent savers
@@ -174,6 +265,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => { localStorage.setItem(`${STORAGE_KEY}_sessions`, JSON.stringify(sessions)); }, [sessions]);
   useEffect(() => { localStorage.setItem(`${STORAGE_KEY}_attendances`, JSON.stringify(attendances)); }, [attendances]);
   useEffect(() => { localStorage.setItem(`${STORAGE_KEY}_auditLogs`, JSON.stringify(auditLogs)); }, [auditLogs]);
+  useEffect(() => { localStorage.setItem(`${STORAGE_KEY}_announcements`, JSON.stringify(announcements)); }, [announcements]);
+  useEffect(() => { localStorage.setItem(`${STORAGE_KEY}_absenceNotifications`, JSON.stringify(absenceNotifications)); }, [absenceNotifications]);
+  useEffect(() => { localStorage.setItem(`${STORAGE_KEY}_parentMessages`, JSON.stringify(parentMessages)); }, [parentMessages]);
 
   // Toast Helpers
   const removeToast = useCallback((id: string) => {
@@ -214,6 +308,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const hasPermission = (module: string): boolean => {
     const role = currentUser.role;
     if (role === 'SUPER_ADMIN') return true;
+
+    if (role === 'PARENT') {
+      return ['dashboard', 'parentPortal', 'children', 'schedule', 'payments', 'announcements', 'contact'].includes(module);
+    }
+
     switch (module) {
       case 'dashboard':
         return true;
@@ -876,9 +975,288 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setSessions(INITIAL_SESSIONS);
     setAttendances(INITIAL_ATTENDANCES);
     setAuditLogs(INITIAL_AUDIT_LOGS);
+    setAnnouncements(INITIAL_ANNOUNCEMENTS);
+    setAbsenceNotifications(INITIAL_ABSENCE_NOTIFICATIONS);
+    setParentMessages(INITIAL_PARENT_MESSAGES);
     localStorage.clear();
     showToast('Données de démonstration réinitialisées avec succès', 'info');
   };
+
+  // ==========================================
+  // PORTAIL PARENTS & ACTIONS LIÉES
+  // ==========================================
+
+  const addAbsenceNotification = (data: {
+    parentId: string;
+    playerId: string;
+    sessionDate: string;
+    sessionId?: string;
+    reason: AbsenceReason;
+    notes?: string;
+  }): { success: boolean; error?: string } => {
+    const validation = validateAbsenceNotificationInput(data);
+    if (!validation.isValid) {
+      showToast(validation.error || 'Erreur de saisie.', 'error');
+      return { success: false, error: validation.error };
+    }
+
+    // Security check: Verify that the child actually belongs to this parent (Anti-IDOR)
+    const child = players.find((p) => p.id === data.playerId && !p.isDeleted);
+    if (!child || child.parentId !== data.parentId) {
+      showToast('Accès refusé : cet enfant n’est pas associé à votre compte parent.', 'error');
+      logAudit('ALERTE_IDOR', 'PARAMETRES', data.playerId, `Tentative d'enregistrement d'absence pour un joueur non associé au parent ${data.parentId}.`);
+      return { success: false, error: 'Accès refusé : enfant non associé.' };
+    }
+
+    const newNotification: AbsenceNotification = {
+      id: `abs-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      parentId: data.parentId,
+      playerId: data.playerId,
+      sessionDate: data.sessionDate,
+      sessionId: data.sessionId,
+      reason: data.reason,
+      notes: data.notes?.trim(),
+      status: 'En attente',
+      createdAt: new Date().toISOString(),
+    };
+
+    setAbsenceNotifications((prev) => [newNotification, ...prev]);
+    logAudit('NOTIFICATION_ABSENCE', 'PRESENCE', newNotification.id, `Absence signalée pour ${child.firstName} ${child.lastName} le ${data.sessionDate} (${data.reason}).`);
+    showToast('Notification d’absence transmise aux entraîneurs et à l’administration.', 'success');
+    return { success: true };
+  };
+
+  const updateAbsenceNotificationStatus = (
+    id: string,
+    status: AbsenceNotificationStatus,
+    responseNote?: string
+  ) => {
+    setAbsenceNotifications((prev) =>
+      prev.map((notif) => {
+        if (notif.id === id) {
+          return {
+            ...notif,
+            status,
+            responseNote: responseNote !== undefined ? responseNote : notif.responseNote,
+            reviewedBy: currentUser.name,
+            reviewedAt: new Date().toISOString(),
+          };
+        }
+        return notif;
+      })
+    );
+    showToast(`Statut de l'absence mis à jour : ${status}`, 'success');
+  };
+
+  const sendParentMessage = (data: {
+    parentId: string;
+    parentName: string;
+    parentEmail?: string;
+    parentPhone?: string;
+    playerId?: string;
+    subject: string;
+    message: string;
+  }): { success: boolean; error?: string } => {
+    const validation = validateParentMessageInput(data);
+    if (!validation.isValid) {
+      showToast(validation.error || 'Erreur de saisie.', 'error');
+      return { success: false, error: validation.error };
+    }
+
+    const newMsg: ParentMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      parentId: data.parentId,
+      parentName: data.parentName,
+      parentEmail: data.parentEmail,
+      parentPhone: data.parentPhone,
+      playerId: data.playerId,
+      subject: data.subject.trim(),
+      message: data.message.trim(),
+      status: 'Non lu',
+      createdAt: new Date().toISOString(),
+    };
+
+    setParentMessages((prev) => [newMsg, ...prev]);
+    showToast('Votre message a bien été transmis au secrétariat de l’association.', 'success');
+    return { success: true };
+  };
+
+  const updateParentMessageStatus = (
+    id: string,
+    status: 'Non lu' | 'Lu' | 'Répondu',
+    response?: string
+  ) => {
+    setParentMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id === id) {
+          return {
+            ...msg,
+            status,
+            response: response !== undefined ? response : msg.response,
+            respondedAt: response ? new Date().toISOString() : msg.respondedAt,
+          };
+        }
+        return msg;
+      })
+    );
+    showToast('Statut du message mis à jour', 'info');
+  };
+
+  const addAnnouncement = (
+    announcement: Omit<Announcement, 'id' | 'createdAt' | 'authorName'>
+  ): Announcement => {
+    const newAnn: Announcement = {
+      id: `ann-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      ...announcement,
+      authorName: currentUser.name,
+      createdAt: new Date().toISOString(),
+    };
+    setAnnouncements((prev) => [newAnn, ...prev]);
+    showToast('Nouvelle annonce publiée avec succès', 'success');
+    logAudit('PUBLICATION_ANNONCE', 'PARAMETRES', newAnn.id, `Annonce publiée : ${newAnn.title}`);
+    return newAnn;
+  };
+
+  const deleteAnnouncement = (id: string) => {
+    setAnnouncements((prev) => prev.filter((a) => a.id !== id));
+    showToast('Annonce supprimée', 'info');
+  };
+
+  const createParentAccount = async (
+    parentId: string,
+    email: string,
+    password = 'Atlas2026!'
+  ): Promise<{ success: boolean; error?: string; user?: User }> => {
+    const targetParent = parents.find((p) => p.id === parentId);
+    if (!targetParent) {
+      return { success: false, error: 'Parent introuvable.' };
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { success: false, error: 'Adresse email invalide.' };
+    }
+
+    const existing = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (existing) {
+      return { success: false, error: 'Un compte avec cette adresse email existe déjà.' };
+    }
+
+    const newUser: User = {
+      id: `usr-parent-${Date.now()}`,
+      name: `${targetParent.firstName} ${targetParent.lastName}`,
+      email: cleanEmail,
+      password: password,
+      role: 'PARENT',
+      parentId: targetParent.id,
+      phone: targetParent.phone,
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    setUsers((prev) => [...prev, newUser]);
+    setParents((prev) =>
+      prev.map((p) =>
+        p.id === parentId
+          ? { ...p, accountStatus: 'Active', userId: newUser.id, email: cleanEmail }
+          : p
+      )
+    );
+
+    logAudit(
+      'CREATION_COMPTE_PARENT',
+      'UTILISATEUR',
+      newUser.id,
+      `Compte parent créé pour ${targetParent.firstName} ${targetParent.lastName} (${cleanEmail}).`
+    );
+    showToast(`Compte parent créé avec succès pour ${targetParent.firstName} ${targetParent.lastName}`, 'success');
+    return { success: true, user: newUser };
+  };
+
+  const resetParentPassword = async (
+    parentId: string
+  ): Promise<{ success: boolean; error?: string; tempPassword?: string }> => {
+    const parent = parents.find((p) => p.id === parentId);
+    if (!parent) return { success: false, error: 'Parent introuvable' };
+
+    const parentUser = users.find(
+      (u) => u.parentId === parentId || (parent.email && u.email.toLowerCase() === parent.email.toLowerCase())
+    );
+    if (!parentUser) {
+      return { success: false, error: 'Aucun compte utilisateur actif associé à ce parent.' };
+    }
+
+    const tempPassword = 'Atlas2026!';
+    setUsers((prev) =>
+      prev.map((u) => (u.id === parentUser.id ? { ...u, password: tempPassword } : u))
+    );
+
+    logAudit('REINITIALISATION_MDP_PARENT', 'UTILISATEUR', parentUser.id, `Mot de passe réinitialisé pour le compte parent ${parentUser.email}`);
+    showToast(`Mot de passe réinitialisé pour ${parent.firstName} ${parent.lastName} (Mot de passe temporaire : ${tempPassword})`, 'success');
+    return { success: true, tempPassword };
+  };
+
+  const linkChildToParent = (playerId: string, parentId: string) => {
+    setPlayers((prev) =>
+      prev.map((p) => (p.id === playerId ? { ...p, parentId } : p))
+    );
+    logAudit('LIAISON_ENFANT_PARENT', 'JOUEUR', playerId, `Joueur ${playerId} lié au parent ${parentId}.`);
+    showToast('Enfant associé au parent avec succès', 'success');
+  };
+
+  const unlinkChildFromParent = (playerId: string) => {
+    setPlayers((prev) =>
+      prev.map((p) => (p.id === playerId ? { ...p, parentId: '' } : p))
+    );
+    logAudit('DISSOCIATION_ENFANT_PARENT', 'JOUEUR', playerId, `Joueur ${playerId} dissocié de son parent.`);
+    showToast('Liaison parent-enfant retirée', 'info');
+  };
+
+  // Scoped Accessors (Anti-IDOR)
+  const getParentLinkedPlayers = useCallback((parentId: string): Player[] => {
+    if (!parentId) return [];
+    return players.filter((p) => !p.isDeleted && p.parentId === parentId);
+  }, [players]);
+
+  const getParentPayments = useCallback((parentId: string): Payment[] => {
+    if (!parentId) return [];
+    const linkedPlayerIds = new Set(players.filter((p) => !p.isDeleted && p.parentId === parentId).map((p) => p.id));
+    return payments.filter((pay) => pay.parentId === parentId || linkedPlayerIds.has(pay.playerId));
+  }, [payments, players]);
+
+  const getParentReceipts = useCallback((parentId: string): Receipt[] => {
+    if (!parentId) return [];
+    const parentPaymentIds = new Set(getParentPayments(parentId).map((p) => p.id));
+    return receipts.filter((rec) => parentPaymentIds.has(rec.paymentId));
+  }, [getParentPayments, receipts]);
+
+  const getParentSessions = useCallback((parentId: string): TrainingSession[] => {
+    if (!parentId) return [];
+    const childrenTeams = new Set(players.filter((p) => !p.isDeleted && p.parentId === parentId).map((p) => p.teamId));
+    return sessions.filter((s) => childrenTeams.has(s.teamId));
+  }, [players, sessions]);
+
+  const getParentAttendanceRecords = useCallback((parentId: string): AttendanceRecord[] => {
+    if (!parentId) return [];
+    const childrenIds = new Set(players.filter((p) => !p.isDeleted && p.parentId === parentId).map((p) => p.id));
+    return attendances.filter((att) => childrenIds.has(att.playerId));
+  }, [attendances, players]);
+
+  const getParentAnnouncements = useCallback((parentId: string): Announcement[] => {
+    if (!parentId) return announcements.filter((a) => !a.teamId);
+    const childrenTeams = new Set(players.filter((p) => !p.isDeleted && p.parentId === parentId).map((p) => p.teamId));
+    return announcements.filter((a) => !a.teamId || childrenTeams.has(a.teamId));
+  }, [announcements, players]);
+
+  const getParentAbsenceNotifications = useCallback((parentId: string): AbsenceNotification[] => {
+    if (!parentId) return [];
+    return absenceNotifications.filter((n) => n.parentId === parentId);
+  }, [absenceNotifications]);
+
+  const getParentMessages = useCallback((parentId: string): ParentMessage[] => {
+    if (!parentId) return [];
+    return parentMessages.filter((m) => m.parentId === parentId);
+  }, [parentMessages]);
 
   return (
     <AppContext.Provider
@@ -896,6 +1274,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sessions,
         attendances,
         auditLogs,
+        announcements,
+        absenceNotifications,
+        parentMessages,
         toasts,
         showToast,
         removeToast,
@@ -922,6 +1303,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         addUser,
         updateUser,
         resetToSeedData,
+        addAbsenceNotification,
+        updateAbsenceNotificationStatus,
+        sendParentMessage,
+        updateParentMessageStatus,
+        addAnnouncement,
+        deleteAnnouncement,
+        createParentAccount,
+        resetParentPassword,
+        linkChildToParent,
+        unlinkChildFromParent,
+        getParentLinkedPlayers,
+        getParentPayments,
+        getParentReceipts,
+        getParentSessions,
+        getParentAttendanceRecords,
+        getParentAnnouncements,
+        getParentAbsenceNotifications,
+        getParentMessages,
         getPlayerFinancials,
         getParentFinancials,
         getPlayerAttendanceStats,

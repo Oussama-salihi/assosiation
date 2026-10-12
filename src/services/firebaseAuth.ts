@@ -1,5 +1,5 @@
-import { User } from '../types';
-import { INITIAL_USERS } from '../data/seedData';
+import { User, Parent } from '../types';
+import { INITIAL_USERS, INITIAL_PARENTS } from '../data/seedData';
 import {
   hashPassword,
   verifyPassword,
@@ -75,8 +75,24 @@ class FirebaseAuthService {
       const stored = safeGetItem(USERS_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Fusionner les comptes initiaux manquants (notamment les comptes parents préconfigurés)
+          const existingEmails = new Set(parsed.map((u: User) => u.email?.toLowerCase()));
+          const existingIds = new Set(parsed.map((u: User) => u.id));
+          let needsUpdate = false;
+          const merged = [...parsed];
+
+          for (const initialUser of INITIAL_USERS) {
+            if (!existingEmails.has(initialUser.email.toLowerCase()) && !existingIds.has(initialUser.id)) {
+              merged.push(initialUser);
+              needsUpdate = true;
+            }
+          }
+
+          if (needsUpdate) {
+            safeSetItem(USERS_STORAGE_KEY, JSON.stringify(merged));
+          }
+          return merged;
         }
       }
     } catch (e) {
@@ -99,11 +115,11 @@ class FirebaseAuthService {
         }
       } else {
         // Migration rétrocompatible éventuelle depuis legacy
-        const legacyUserId = localStorage.getItem(LEGACY_AUTH_STORAGE_KEY);
+        const legacyUserId = safeGetItem(LEGACY_AUTH_STORAGE_KEY);
         if (legacyUserId) {
           session = createSecureSession(legacyUserId);
-          localStorage.removeItem(LEGACY_AUTH_STORAGE_KEY);
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+          safeRemoveItem(LEGACY_AUTH_STORAGE_KEY);
+          safeSetItem(AUTH_STORAGE_KEY, JSON.stringify(session));
         }
       }
 
@@ -113,7 +129,7 @@ class FirebaseAuthService {
         if (found) {
           // Mettre à jour lastActiveAt
           session.lastActiveAt = Date.now();
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+          safeSetItem(AUTH_STORAGE_KEY, JSON.stringify(session));
           this._currentUser = sanitizeUser(found);
         } else {
           // Utilisateur introuvable ou désactivé
@@ -135,8 +151,8 @@ class FirebaseAuthService {
 
   private clearSession() {
     this._currentUser = null;
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-    localStorage.removeItem(LEGACY_AUTH_STORAGE_KEY);
+    safeRemoveItem(AUTH_STORAGE_KEY);
+    safeRemoveItem(LEGACY_AUTH_STORAGE_KEY);
   }
 
   get currentUser(): User | null {
@@ -144,7 +160,7 @@ class FirebaseAuthService {
       this.restoreSession();
     } else if (this._currentUser) {
       // Vérifier si la session n'a pas expiré entre-temps
-      const savedSessionRaw = localStorage.getItem(AUTH_STORAGE_KEY);
+      const savedSessionRaw = safeGetItem(AUTH_STORAGE_KEY);
       if (savedSessionRaw) {
         try {
           const session: SecureSessionData = JSON.parse(savedSessionRaw);
@@ -154,7 +170,7 @@ class FirebaseAuthService {
           } else {
             // Prolonger l'activité
             session.lastActiveAt = Date.now();
-            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+            safeSetItem(AUTH_STORAGE_KEY, JSON.stringify(session));
           }
         } catch {
           this.clearSession();
@@ -197,7 +213,27 @@ class FirebaseAuthService {
     }
 
     const users = this.getUsers();
-    const user = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    let user = users.find((u) => u.email.toLowerCase() === cleanEmail);
+
+    // Si non trouvé par email utilisateur direct, vérifier si l'email correspond au contact d'un tuteur/parent
+    if (!user) {
+      try {
+        const storedParentsRaw = safeGetItem('maroc_football_academy_db_v1_parents');
+        const parentsList: Parent[] = storedParentsRaw ? JSON.parse(storedParentsRaw) : INITIAL_PARENTS;
+        if (Array.isArray(parentsList)) {
+          const matchedParent = parentsList.find(
+            (p) => p.email && p.email.toLowerCase() === cleanEmail
+          );
+          if (matchedParent) {
+            user = users.find(
+              (u) => u.id === matchedParent.userId || (matchedParent.id && u.parentId === matchedParent.id)
+            );
+          }
+        }
+      } catch {
+        // Ignorer l'erreur de recherche secondaire
+      }
+    }
 
     if (!user) {
       recordFailedLoginAttempt(cleanEmail);
@@ -242,7 +278,7 @@ class FirebaseAuthService {
 
     // 3. Création de session sécurisée avec TTL
     const session = createSecureSession(user.id);
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+    safeSetItem(AUTH_STORAGE_KEY, JSON.stringify(session));
 
     // Assainir l'utilisateur avant de l'assigner à currentUser
     const sanitized = sanitizeUser(user);

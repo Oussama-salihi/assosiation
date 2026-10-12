@@ -266,4 +266,64 @@ export const ROLE_PERMISSIONS: Record<UserRole, {
     canExportData: false,
     canViewAuditLogs: false,
   },
+  PARENT: {
+    canManageUsers: false,
+    canManageSettings: false,
+    canManageFinancials: false,
+    canManageAllTeams: false,
+    canManageAllPlayers: false,
+    canDeleteEntities: false,
+    canExportData: false,
+    canViewAuditLogs: false,
+  },
 };
+
+/**
+ * 7. Sécurité & Contrôle d'accès Portail Parents (Anti-IDOR)
+ */
+export function canParentAccessChild(
+  parentRecordId: string | undefined,
+  targetPlayerParentId: string | undefined
+): boolean {
+  if (!parentRecordId || !targetPlayerParentId) return false;
+  return parentRecordId.trim() === targetPlayerParentId.trim();
+}
+
+export function validateAbsenceNotificationInput(data: {
+  parentId?: string;
+  playerId?: string;
+  sessionDate?: string;
+  reason?: string;
+}): { isValid: boolean; error?: string } {
+  if (!data.parentId || typeof data.parentId !== 'string' || data.parentId.trim() === '') {
+    return { isValid: false, error: 'Identifiant parent obligatoire.' };
+  }
+  if (!data.playerId || typeof data.playerId !== 'string' || data.playerId.trim() === '') {
+    return { isValid: false, error: 'Veuillez sélectionner l’enfant concerné.' };
+  }
+  if (!data.sessionDate || !/^\d{4}-\d{2}-\d{2}$/.test(data.sessionDate)) {
+    return { isValid: false, error: 'Date de séance invalide (format AAAA-MM-JJ attendu).' };
+  }
+  if (!data.reason || typeof data.reason !== 'string' || data.reason.trim() === '') {
+    return { isValid: false, error: 'Veuillez préciser le motif de l’absence.' };
+  }
+  return { isValid: true };
+}
+
+export function validateParentMessageInput(data: {
+  parentId?: string;
+  subject?: string;
+  message?: string;
+}): { isValid: boolean; error?: string } {
+  if (!data.parentId || typeof data.parentId !== 'string') {
+    return { isValid: false, error: 'Identifiant parent obligatoire.' };
+  }
+  if (!data.subject || data.subject.trim().length < 3) {
+    return { isValid: false, error: 'Le sujet du message doit comporter au moins 3 caractères.' };
+  }
+  if (!data.message || data.message.trim().length < 5) {
+    return { isValid: false, error: 'Le message doit comporter au moins 5 caractères.' };
+  }
+  return { isValid: true };
+}
+

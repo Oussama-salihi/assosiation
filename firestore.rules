@@ -41,6 +41,14 @@ service cloud.firestore {
       return getUserRole() == 'STAFF';
     }
 
+    function isParent() {
+      return getUserRole() == 'PARENT';
+    }
+
+    function getParentId() {
+      return getUserData().parentId;
+    }
+
     function getCoachAssignedTeamId() {
       return getUserData().assignedTeamId;
     }
@@ -107,8 +115,11 @@ service cloud.firestore {
 
       // JOUEURS
       match /players/{playerId} {
+        // Lecture : Admins/staff, ou entraîneur de l'équipe, ou parent lié à l'enfant (anti-IDOR)
         allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && (
           !isCoach() || resource.data.teamId == getCoachAssignedTeamId()
+        ) && (
+          !isParent() || resource.data.parentId == getParentId()
         );
         allow create: if isAuthenticated() && belongsToSameAssociation(assocId) && (isAdmin() || isStaff());
         allow update: if isAuthenticated() && belongsToSameAssociation(assocId) && (
@@ -121,21 +132,29 @@ service cloud.firestore {
 
       // PARENTS
       match /parents/{parentId} {
-        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && !isCoach();
+        // Lecture : Admins, staff, comptables, ou le parent lui-même
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && !isCoach() && (
+          !isParent() || getParentId() == parentId
+        );
         allow create, update: if isAuthenticated() && belongsToSameAssociation(assocId) && (isAdmin() || isStaff() || isComptable());
         allow delete: if isAuthenticated() && belongsToSameAssociation(assocId) && isAdmin();
       }
 
       // INSCRIPTIONS
       match /registrations/{regId} {
-        allow read: if isAuthenticated() && belongsToSameAssociation(assocId);
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && (
+          !isParent() || resource.data.parentId == getParentId()
+        );
         allow create, update: if isAuthenticated() && belongsToSameAssociation(assocId) && (isAdmin() || isStaff());
         allow delete: if isAuthenticated() && belongsToSameAssociation(assocId) && isAdmin();
       }
 
       // PAIEMENTS
       match /payments/{paymentId} {
-        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && isComptable();
+        // Lecture : Comptable/admin ou parent lié au paiement de son enfant
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && (
+          isComptable() || (isParent() && resource.data.parentId == getParentId())
+        );
         // Seul COMPTABLE et ADMIN peuvent créer des paiements avec montants strictement positifs
         allow create: if isAuthenticated() && belongsToSameAssociation(assocId) && isComptable()
           && request.resource.data.amount is number
@@ -148,7 +167,8 @@ service cloud.firestore {
 
       // REÇUS OFFICIELS
       match /receipts/{receiptId} {
-        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && isComptable();
+        // Les parents peuvent consulter les reçus délivrés
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && (isComptable() || isParent());
         // Les reçus sont créés par le comptable ou l'admin et sont IMMUABLES
         allow create: if isAuthenticated() && belongsToSameAssociation(assocId) && isComptable()
           && request.resource.data.receiptNumber is string
@@ -173,6 +193,40 @@ service cloud.firestore {
         allow create, update: if isAuthenticated() && belongsToSameAssociation(assocId) && (
           isAdmin() || isCoach()
         );
+        allow delete: if isAuthenticated() && belongsToSameAssociation(assocId) && isAdmin();
+      }
+
+      // NOTIFICATIONS D'ABSENCE DES PARENTS
+      match /absenceNotifications/{notifId} {
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && (
+          !isParent() || resource.data.parentId == getParentId()
+        );
+        // Un parent peut uniquement déclarer une absence pour son propre enfant
+        allow create: if isAuthenticated() && belongsToSameAssociation(assocId) && isParent()
+          && request.resource.data.parentId == getParentId()
+          && request.resource.data.sessionDate is string;
+        // Seuls le staff / coach / admin peuvent valider ou répondre à l'absence
+        allow update: if isAuthenticated() && belongsToSameAssociation(assocId) && (
+          isAdmin() || isCoach() || isStaff()
+        );
+        allow delete: if isAuthenticated() && belongsToSameAssociation(assocId) && isAdmin();
+      }
+
+      // ANNONCES DU CLUB
+      match /announcements/{announcementId} {
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId);
+        allow create, update, delete: if isAuthenticated() && belongsToSameAssociation(assocId) && (isAdmin() || isStaff());
+      }
+
+      // MESSAGES DES PARENTS À L'ADMINISTRATION
+      match /parentMessages/{msgId} {
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && (
+          !isParent() || resource.data.parentId == getParentId()
+        );
+        allow create: if isAuthenticated() && belongsToSameAssociation(assocId) && isParent()
+          && request.resource.data.parentId == getParentId()
+          && request.resource.data.message is string;
+        allow update: if isAuthenticated() && belongsToSameAssociation(assocId) && (isAdmin() || isStaff());
         allow delete: if isAuthenticated() && belongsToSameAssociation(assocId) && isAdmin();
       }
 

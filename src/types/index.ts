@@ -3,7 +3,7 @@
  * Association de Football au Maroc
  */
 
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'COMPTABLE' | 'ENTRAINEUR' | 'STAFF';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'COMPTABLE' | 'ENTRAINEUR' | 'STAFF' | 'PARENT';
 
 export interface User {
   id: string;
@@ -14,6 +14,7 @@ export interface User {
   phone?: string;
   avatar?: string;
   assignedTeamId?: string; // Pour les entraîneurs
+  parentId?: string; // Pour les utilisateurs avec rôle PARENT
   active: boolean;
   createdAt: string;
 }
@@ -53,6 +54,8 @@ export interface Parent {
   address: string;
   relation: ParentRelation;
   notes?: string;
+  accountStatus?: 'Active' | 'Invité' | 'Non créé';
+  userId?: string;
   createdAt: string;
   isDeleted?: boolean;
 }
@@ -193,3 +196,57 @@ export interface PlayerFinancialSummary {
   lastPaymentAmount?: number;
   unpaidPeriodsCount: number;
 }
+
+// ==========================================
+// PORTAIL PARENTS & COMMUNICATIONS DU CLUB
+// ==========================================
+
+export type AnnouncementType = 'GENERAL' | 'EQUIPE' | 'URGENT' | 'EVENEMENT';
+
+export interface Announcement {
+  id: string;
+  title: string;
+  titleAr?: string;
+  content: string;
+  contentAr?: string;
+  type: AnnouncementType;
+  teamId?: string; // Si renseigné, réservé à cette équipe ; sinon général
+  authorName: string;
+  authorRole?: string;
+  createdAt: string;
+  important?: boolean;
+}
+
+export type AbsenceReason = 'Maladie' | 'Voyage' | 'Études / Examens' | 'Familial' | 'Autre';
+export type AbsenceNotificationStatus = 'En attente' | 'Approuvé' | 'Vu' | 'Rejeté';
+
+export interface AbsenceNotification {
+  id: string;
+  parentId: string;
+  playerId: string;
+  sessionDate: string; // YYYY-MM-DD
+  sessionId?: string;
+  reason: AbsenceReason;
+  notes?: string;
+  status: AbsenceNotificationStatus;
+  createdAt: string;
+  responseNote?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+}
+
+export interface ParentMessage {
+  id: string;
+  parentId: string;
+  parentName: string;
+  parentEmail?: string;
+  parentPhone?: string;
+  playerId?: string;
+  subject: string;
+  message: string;
+  status: 'Non lu' | 'Lu' | 'Répondu';
+  createdAt: string;
+  response?: string;
+  respondedAt?: string;
+}
+

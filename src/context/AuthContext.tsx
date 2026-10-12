@@ -13,7 +13,8 @@ interface AuthContextType {
   currentUser: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  isAuthenticating: boolean;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; message: string }>;
 }
@@ -24,6 +25,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const { setCurrentUser: setAppCurrentUser, showToast } = useApp();
   const [currentUser, setCurrentUser] = useState<User | null>(() => auth.currentUser);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
 
   // Stable ref tracking the processed user session ID to decouple notifications from re-renders
   const processedSessionNotificationRef = useRef<string | null>(auth.currentUser?.id || null);
@@ -54,24 +56,40 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = async (
     email: string,
     password: string
-  ): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
+  ): Promise<{ success: boolean; error?: string; user?: User }> => {
+    setIsAuthenticating(true);
     try {
       const { user } = await signInWithEmailAndPassword(auth, email, password);
+
+      // Mettre à jour l'état de l'application immédiatement avec le profil résolu
+      setCurrentUser(user);
+      setAppCurrentUser(user);
 
       // Decouple toast notification from re-renders:
       // Verify that this specific user session transition has not already been processed
       if (processedSessionNotificationRef.current !== user.id) {
         processedSessionNotificationRef.current = user.id;
-        showToast(`Connecté en tant que ${user.name} (${user.role})`, 'info');
+        const roleLabel =
+          user.role === 'PARENT'
+            ? 'Espace Parent'
+            : user.role === 'SUPER_ADMIN'
+            ? 'Super Administrateur'
+            : user.role === 'ADMIN'
+            ? 'Administrateur'
+            : user.role === 'COMPTABLE'
+            ? 'Comptabilité'
+            : user.role === 'ENTRAINEUR'
+            ? 'Entraîneur'
+            : 'Staff';
+        showToast(`Connecté avec succès : ${user.name} (${roleLabel})`, 'info');
       }
 
-      return { success: true };
+      return { success: true, user };
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Identifiants incorrects.';
+      const message = err instanceof Error ? err.message : 'Identifiants ou mot de passe incorrects.';
       return { success: false, error: message };
     } finally {
-      setIsLoading(false);
+      setIsAuthenticating(false);
     }
   };
 
@@ -103,6 +121,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         currentUser,
         isAuthenticated: !!currentUser,
         isLoading,
+        isAuthenticating,
         login,
         logout,
         resetPassword,
