@@ -1,3 +1,5 @@
+import { sanitizeCsvCell } from './security';
+
 /**
  * Utilitaires de formatage pour l'application
  * Normes marocaines : JJ/MM/AAAA, devise DH / MAD
@@ -73,13 +75,14 @@ export function getWhatsAppUrl(phone?: string, text?: string): string {
 
 /**
  * Exporte un tableau d'objets en fichier CSV lisible sous Excel avec encodage UTF-8 BOM
+ * Protège contre l'injection de formules CSV (CWE-1236)
  */
 export function exportToExcelCsv(filename: string, headers: string[], rows: (string | number)[][]) {
   const BOM = '\uFEFF';
   const csvContent = [
-    headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(';'),
+    headers.map(h => `"${sanitizeCsvCell(h).replace(/"/g, '""')}"`).join(';'),
     ...rows.map(row => 
-      row.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(';')
+      row.map(cell => `"${sanitizeCsvCell(cell).replace(/"/g, '""')}"`).join(';')
     )
   ].join('\r\n');
 

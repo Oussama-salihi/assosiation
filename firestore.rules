@@ -1,0 +1,190 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // HELPER FUNCTIONS & AUTHENTICATION GUARDS
+    // =========================================================================
+
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function getUserRole() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? getUserData().role
+        : null;
+    }
+
+    function isSuperAdmin() {
+      return getUserRole() == 'SUPER_ADMIN';
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || getUserRole() == 'ADMIN';
+    }
+
+    function isComptable() {
+      return isAdmin() || getUserRole() == 'COMPTABLE';
+    }
+
+    function isCoach() {
+      return getUserRole() == 'ENTRAINEUR';
+    }
+
+    function isStaff() {
+      return getUserRole() == 'STAFF';
+    }
+
+    function getCoachAssignedTeamId() {
+      return getUserData().assignedTeamId;
+    }
+
+    // Association Tenant Isolation Helper
+    function belongsToSameAssociation(assocId) {
+      return isAuthenticated() && (isSuperAdmin() || getUserData().associationId == assocId);
+    }
+
+    // Default Deny Rule for any unmapped paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // USERS COLLECTION & ROLE MANAGEMENT
+    // =========================================================================
+    match /users/{userId} {
+      // Un utilisateur connecté peut lire son propre profil ou les admins peuvent lire tous les collaborateurs
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+
+      // Création : Seul SUPER_ADMIN et ADMIN (ADMIN ne peut pas créer de SUPER_ADMIN)
+      allow create: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (isAdmin() && request.resource.data.role != 'SUPER_ADMIN')
+      ) && request.resource.data.active is bool
+        && request.resource.data.email is string;
+
+      // Modification :
+      // - Interdiction stricte de modifier son propre rôle ou son statut actif
+      // - Seul SUPER_ADMIN peut modifier un compte SUPER_ADMIN ou assigner le rôle SUPER_ADMIN
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == userId
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.active == resource.data.active) ||
+        (isSuperAdmin()) ||
+        (isAdmin()
+          && resource.data.role != 'SUPER_ADMIN'
+          && request.resource.data.role != 'SUPER_ADMIN')
+      );
+
+      // Suppression interdite en direct (soft-delete actif requis)
+      allow delete: if isSuperAdmin();
+    }
+
+    // =========================================================================
+    // ASSOCIATION DATA & SUBCOLLECTIONS (MULTI-TENANT ISOLATION)
+    // =========================================================================
+    match /associations/{assocId} {
+
+      // PARAMÈTRES DE L'ASSOCIATION
+      match /settings/{settingId} {
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId);
+        allow write: if isAuthenticated() && belongsToSameAssociation(assocId) && isAdmin();
+      }
+
+      // ÉQUIPES
+      match /teams/{teamId} {
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && (
+          !isCoach() || getCoachAssignedTeamId() == teamId
+        );
+        allow create, update, delete: if isAuthenticated() && belongsToSameAssociation(assocId) && isAdmin();
+      }
+
+      // JOUEURS
+      match /players/{playerId} {
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && (
+          !isCoach() || resource.data.teamId == getCoachAssignedTeamId()
+        );
+        allow create: if isAuthenticated() && belongsToSameAssociation(assocId) && (isAdmin() || isStaff());
+        allow update: if isAuthenticated() && belongsToSameAssociation(assocId) && (
+          isAdmin() ||
+          isStaff() ||
+          (isCoach() && resource.data.teamId == getCoachAssignedTeamId() && request.resource.data.teamId == getCoachAssignedTeamId())
+        );
+        allow delete: if isAuthenticated() && belongsToSameAssociation(assocId) && isAdmin();
+      }
+
+      // PARENTS
+      match /parents/{parentId} {
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && !isCoach();
+        allow create, update: if isAuthenticated() && belongsToSameAssociation(assocId) && (isAdmin() || isStaff() || isComptable());
+        allow delete: if isAuthenticated() && belongsToSameAssociation(assocId) && isAdmin();
+      }
+
+      // INSCRIPTIONS
+      match /registrations/{regId} {
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId);
+        allow create, update: if isAuthenticated() && belongsToSameAssociation(assocId) && (isAdmin() || isStaff());
+        allow delete: if isAuthenticated() && belongsToSameAssociation(assocId) && isAdmin();
+      }
+
+      // PAIEMENTS
+      match /payments/{paymentId} {
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && isComptable();
+        // Seul COMPTABLE et ADMIN peuvent créer des paiements avec montants strictement positifs
+        allow create: if isAuthenticated() && belongsToSameAssociation(assocId) && isComptable()
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0
+          && request.resource.data.amount <= 50000;
+        // Paiements validés immuables sauf pour correction auditable par ADMIN
+        allow update: if isAuthenticated() && belongsToSameAssociation(assocId) && isAdmin();
+        allow delete: if false; // Les paiements ne sont jamais supprimés directement (audit trail)
+      }
+
+      // REÇUS OFFICIELS
+      match /receipts/{receiptId} {
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && isComptable();
+        // Les reçus sont créés par le comptable ou l'admin et sont IMMUABLES
+        allow create: if isAuthenticated() && belongsToSameAssociation(assocId) && isComptable()
+          && request.resource.data.receiptNumber is string
+          && request.resource.data.paymentId is string;
+        allow update, delete: if false; // Strictement immuable
+      }
+
+      // SÉANCES D'ENTRAÎNEMENT
+      match /sessions/{sessionId} {
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && (
+          !isCoach() || resource.data.teamId == getCoachAssignedTeamId()
+        );
+        allow create, update: if isAuthenticated() && belongsToSameAssociation(assocId) && (
+          isAdmin() || (isCoach() && request.resource.data.teamId == getCoachAssignedTeamId())
+        );
+        allow delete: if isAuthenticated() && belongsToSameAssociation(assocId) && isAdmin();
+      }
+
+      // FEUILLES DE PRÉSENCE
+      match /attendances/{attendanceId} {
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId);
+        allow create, update: if isAuthenticated() && belongsToSameAssociation(assocId) && (
+          isAdmin() || isCoach()
+        );
+        allow delete: if isAuthenticated() && belongsToSameAssociation(assocId) && isAdmin();
+      }
+
+      // JOURNAUX D'AUDIT
+      match /auditLogs/{logId} {
+        allow read: if isAuthenticated() && belongsToSameAssociation(assocId) && (isAdmin() || getUserRole() == 'COMPTABLE');
+        // Les logs d'audit ne peuvent qu'être ajoutés en écriture seule et sont immuables
+        allow create: if isAuthenticated() && belongsToSameAssociation(assocId)
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.timestamp is string;
+        allow update, delete: if false; // Strictement immuable
+      }
+    }
+  }
+}

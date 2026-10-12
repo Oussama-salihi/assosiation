@@ -5,12 +5,10 @@ import {
   CheckSquare,
   Clock,
   MapPin,
-  Users,
-  CheckCircle2,
   Calendar,
-  Eye,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { TrainingSession } from '../../types';
 import { formatDate } from '../../utils/formatters';
 
@@ -23,11 +21,18 @@ export const SessionsView: React.FC<SessionsViewProps> = ({
   onOpenNewSession,
   onOpenAttendanceSheet,
 }) => {
-  const { sessions, teams, players, attendances } = useApp();
+  const { sessions, teams, attendances, currentUser } = useApp();
+  const { t, language } = useLanguage();
 
-  const [filterTeam, setFilterTeam] = useState<string>('ALL');
+  const isCoach = currentUser.role === 'ENTRAINEUR';
+  const availableTeams = isCoach
+    ? teams.filter((t) => t.id === currentUser.assignedTeamId)
+    : teams;
+
+  const [filterTeam, setFilterTeam] = useState<string>(isCoach && currentUser.assignedTeamId ? currentUser.assignedTeamId : 'ALL');
 
   const filteredSessions = sessions.filter((s) => {
+    if (isCoach && s.teamId !== currentUser.assignedTeamId) return false;
     return filterTeam === 'ALL' || s.teamId === filterTeam;
   });
 
@@ -36,41 +41,45 @@ export const SessionsView: React.FC<SessionsViewProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <CalendarDays className="w-5 h-5 text-amber-600" />
-            <span>Séances d'Entraînement & Feuilles de Match ({sessions.length})</span>
+            <span>{t('sessions.title', 'Séances d’entraînement')} ({filteredSessions.length})</span>
           </h2>
           <p className="text-xs text-slate-500">
-            Planning des entraînements par catégorie, horaires, terrains et pointage des présences
+            {isCoach
+              ? (language === 'ar' ? 'حصص فريقك التدريبي' : 'Séances de votre équipe')
+              : t('sessions.subtitle', 'Planning des entraînements par catégorie')}
           </p>
         </div>
 
         <button
           onClick={onOpenNewSession}
-          className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors shrink-0"
+          className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors shrink-0 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
-          <span>Programmer une séance</span>
+          <span>{t('sessions.newSession', 'Programmer une séance')}</span>
         </button>
       </div>
 
       {/* Filter by Team */}
-      <div className="p-4 bg-white rounded-xl border border-slate-200/90 shadow-2xs">
-        <div className="max-w-xs text-xs">
-          <select
-            value={filterTeam}
-            onChange={(e) => setFilterTeam(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-amber-600 text-slate-900 bg-white"
-          >
-            <option value="ALL">Toutes les équipes</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name} ({t.category})
-              </option>
-            ))}
-          </select>
+      {!isCoach && (
+        <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs">
+          <div className="max-w-xs text-xs">
+            <select
+              value={filterTeam}
+              onChange={(e) => setFilterTeam(e.target.value)}
+              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-900 bg-white cursor-pointer"
+            >
+              <option value="ALL">{language === 'ar' ? 'جميع الفرق' : 'Toutes les équipes'}</option>
+              {availableTeams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.category})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Grid of Sessions */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -84,7 +93,7 @@ export const SessionsView: React.FC<SessionsViewProps> = ({
           return (
             <div
               key={session.id}
-              className="bg-white rounded-xl border border-slate-200/90 hover:border-amber-400 p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between"
+              className="bg-white rounded-xl border border-slate-200 hover:border-amber-400 p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between"
             >
               <div>
                 <div className="flex items-start justify-between gap-3">
@@ -97,7 +106,7 @@ export const SessionsView: React.FC<SessionsViewProps> = ({
                         {team?.name}
                       </h3>
                       <span className="text-[11px] text-slate-500 font-medium">
-                        Coach : {session.coachName}
+                        {t('common.coach', 'Coach')} : {session.coachName}
                       </span>
                     </div>
                   </div>
@@ -109,7 +118,9 @@ export const SessionsView: React.FC<SessionsViewProps> = ({
                         : 'bg-amber-100 text-amber-800'
                     }`}
                   >
-                    {session.completed ? 'Pointée' : 'À venir'}
+                    {session.completed
+                      ? (language === 'ar' ? 'تم التسجيل' : 'Pointée')
+                      : (language === 'ar' ? 'قادمة' : 'À venir')}
                   </span>
                 </div>
 
@@ -142,25 +153,31 @@ export const SessionsView: React.FC<SessionsViewProps> = ({
                 <div>
                   {session.completed && rate !== null ? (
                     <div className="text-xs">
-                      <span className="text-slate-500">Présence :</span>{' '}
+                      <span className="text-slate-500">{language === 'ar' ? 'الحضور:' : 'Présence :'}</span>{' '}
                       <strong className="font-mono text-emerald-700 font-bold">{rate} %</strong>
                       <span className="text-[10px] text-slate-400 ml-1">({presentCount}/{totalRecords})</span>
                     </div>
                   ) : (
-                    <span className="text-xs text-slate-400 italic">Appel non fait</span>
+                    <span className="text-xs text-slate-400 italic">
+                      {language === 'ar' ? 'لم يسجل الحضور بعد' : 'Appel non fait'}
+                    </span>
                   )}
                 </div>
 
                 <button
                   onClick={() => onOpenAttendanceSheet(session)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer ${
                     session.completed
                       ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                       : 'bg-emerald-600 hover:bg-emerald-700 text-white'
                   }`}
                 >
                   <CheckSquare className="w-3.5 h-3.5" />
-                  <span>{session.completed ? 'Modifier l\'appel' : 'Faire l\'appel'}</span>
+                  <span>
+                    {session.completed
+                      ? (language === 'ar' ? 'تعديل الحضور' : "Modifier l'appel")
+                      : t('dashboard.takeAttendance', "Faire l'appel")}
+                  </span>
                 </button>
               </div>
             </div>

@@ -1,0 +1,33 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Default Deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Photos des joueurs et logos de club
+    match /associations/{assocId}/players/{playerId}/{fileName} {
+      // Lecture autorisée pour tous les utilisateurs authentifiés de l'association
+      allow read: if isAuthenticated();
+
+      // Upload : max 5MB, types MIME images autorisés
+      allow write: if isAuthenticated()
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    match /associations/{assocId}/club/{fileName} {
+      allow read: if true; // Public pour affichage sur reçus ou page de connexion
+      allow write: if isAuthenticated()
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+  }
+}

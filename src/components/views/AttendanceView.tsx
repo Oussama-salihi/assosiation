@@ -1,16 +1,11 @@
 import React, { useState } from 'react';
 import {
   CheckSquare,
-  Users,
   AlertTriangle,
-  CheckCircle2,
-  Calendar,
-  Clock,
-  ArrowRight,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { TrainingSession } from '../../types';
-import { formatDate } from '../../utils/formatters';
 
 interface AttendanceViewProps {
   onOpenAttendanceSheet: (session: TrainingSession) => void;
@@ -18,14 +13,28 @@ interface AttendanceViewProps {
 }
 
 export const AttendanceView: React.FC<AttendanceViewProps> = ({
-  onOpenAttendanceSheet,
   onNavigateToPlayer,
 }) => {
-  const { teams, players, sessions, attendances, getPlayerAttendanceStats, getTeamStats } = useApp();
+  const { teams, players, sessions, getPlayerAttendanceStats, getTeamStats, currentUser } = useApp();
+  const { t, language } = useLanguage();
 
-  const [selectedTeamId, setSelectedTeamId] = useState<string>(teams[0]?.id || '');
+  const isCoach = currentUser.role === 'ENTRAINEUR';
+  const availableTeams = isCoach
+    ? teams.filter((t) => t.id === currentUser.assignedTeamId)
+    : teams;
 
-  const activePlayers = players.filter((p) => !p.isDeleted && p.status === 'Actif');
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(() => {
+    if (isCoach && currentUser.assignedTeamId) {
+      return currentUser.assignedTeamId;
+    }
+    return teams[0]?.id || '';
+  });
+
+  const activePlayers = players.filter((p) => {
+    if (p.isDeleted || p.status !== 'Actif') return false;
+    if (isCoach && p.teamId !== currentUser.assignedTeamId) return false;
+    return true;
+  });
 
   // Find players with low attendance (< 75%)
   const lowAttendancePlayers = activePlayers
@@ -44,25 +53,27 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+        <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
           <CheckSquare className="w-5 h-5 text-emerald-600" />
-          <span>Suivi de l'Assiduité & Présences aux Entraînements</span>
+          <span>{t('attendance.title', 'Suivi de l’Assiduité & Présences')}</span>
         </h2>
         <p className="text-xs text-slate-500">
-          Statistiques de présence par joueur et par équipe, alertes d'absentéisme
+          {t('attendance.subtitle', 'Pointage individuel des joueurs et statistiques')}
         </p>
       </div>
 
       {/* Alerte Absentéisme (< 75% assiduité) */}
       {lowAttendancePlayers.length > 0 && (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-2">
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-2 text-xs">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-700" />
             <h4 className="font-bold text-xs uppercase tracking-wide text-amber-800">
-              Alerte Assiduité : {lowAttendancePlayers.length} joueur(s) en dessous de 75%
+              {language === 'ar'
+                ? `تنبيه المواظبة: ${lowAttendancePlayers.length} لاعب(ين) بنسبة حضور أقل من 75%`
+                : `Alerte Assiduité : ${lowAttendancePlayers.length} joueur(s) en dessous de 75%`}
             </h4>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-1 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-1">
             {lowAttendancePlayers.map(({ player, stats, team }) => (
               <div
                 key={player.id}
@@ -77,12 +88,12 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                     {team?.name} ({team?.category})
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-end">
                   <span className="font-mono font-bold text-rose-600 block">
                     {stats.percentage} %
                   </span>
                   <span className="text-[10px] text-slate-400">
-                    {stats.attended}/{stats.totalSessions} séances
+                    {stats.attended}/{stats.totalSessions} {language === 'ar' ? 'حصص' : 'séances'}
                   </span>
                 </div>
               </div>
@@ -93,17 +104,17 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
 
       {/* Team Selector Pills */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs scrollbar-thin">
-        {teams.map((t) => (
+        {availableTeams.map((tItem) => (
           <button
-            key={t.id}
-            onClick={() => setSelectedTeamId(t.id)}
-            className={`px-3.5 py-2 rounded-xl font-semibold whitespace-nowrap transition-colors border ${
-              selectedTeamId === t.id
+            key={tItem.id}
+            onClick={() => setSelectedTeamId(tItem.id)}
+            className={`px-3.5 py-2 rounded-xl font-semibold whitespace-nowrap transition-colors border cursor-pointer ${
+              selectedTeamId === tItem.id
                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
                 : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
             }`}
           >
-            {t.name} ({t.category})
+            {tItem.name} ({tItem.category})
           </button>
         ))}
       </div>
@@ -112,7 +123,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 bg-white rounded-xl border border-slate-200/90 shadow-2xs">
           <span className="text-[10px] uppercase font-bold text-slate-400 block">
-            Taux d'assiduité moyen de l'équipe
+            {language === 'ar' ? 'معدل الحضور بالفريق' : "Taux d'assiduité moyen de l'équipe"}
           </span>
           <span
             className={`text-2xl font-black font-mono tabular-nums block mt-1 ${
@@ -121,29 +132,33 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
           >
             {teamStats.avgAttendanceRate} %
           </span>
-          <span className="text-xs text-slate-500">Moyenne de l'ensemble de l'effectif</span>
+          <span className="text-xs text-slate-500">
+            {language === 'ar' ? 'متوسط كافة عناصر الفريق' : "Moyenne de l'ensemble de l'effectif"}
+          </span>
         </div>
 
         <div className="p-4 bg-white rounded-xl border border-slate-200/90 shadow-2xs">
           <span className="text-[10px] uppercase font-bold text-slate-400 block">
-            Séances organisées
+            {language === 'ar' ? 'الحصص المبرمجة' : 'Séances organisées'}
           </span>
           <span className="text-2xl font-black font-mono text-slate-900 tabular-nums block mt-1">
             {teamSessions.length}
           </span>
           <span className="text-xs text-slate-500">
-            {teamSessions.filter((s) => s.completed).length} séances pointées
+            {teamSessions.filter((s) => s.completed).length} {language === 'ar' ? 'حصة مسجلة' : 'séances pointées'}
           </span>
         </div>
 
         <div className="p-4 bg-white rounded-xl border border-slate-200/90 shadow-2xs">
           <span className="text-[10px] uppercase font-bold text-slate-400 block">
-            Joueurs engagés
+            {language === 'ar' ? 'اللاعبون المسجلون' : 'Joueurs engagés'}
           </span>
           <span className="text-2xl font-black font-mono text-slate-900 tabular-nums block mt-1">
             {teamPlayers.length}
           </span>
-          <span className="text-xs text-slate-500">Effectif régulier</span>
+          <span className="text-xs text-slate-500">
+            {language === 'ar' ? 'العدد الفعلي' : 'Effectif régulier'}
+          </span>
         </div>
       </div>
 
@@ -151,32 +166,32 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
       <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
           <h3 className="font-bold text-xs uppercase tracking-wide text-slate-900">
-            Feuille d'Assiduité par Joueur
+            {language === 'ar' ? 'ورقة المواظبة لكل لاعب' : "Feuille d'Assiduité par Joueur"}
           </h3>
           <span className="text-xs text-slate-500">
-            Calcul automatique : Présents / (Présents + Absents + Excusés)
+            {language === 'ar' ? 'نسبة الحضور = الحضور / المجموع' : 'Calcul automatique : Présents / Total'}
           </span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
+          <table className="w-full text-xs text-start">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
-                <th className="py-3 px-4">JOUEUR</th>
-                <th className="py-3 px-3">POSTE</th>
-                <th className="py-3 px-3 text-center">SÉANCES TOTAL</th>
-                <th className="py-3 px-3 text-center">PRÉSENCES</th>
-                <th className="py-3 px-3 text-center">ABSENCES</th>
-                <th className="py-3 px-3 text-center">EXCUSÉS</th>
-                <th className="py-3 px-3 text-right">POURCENTAGE DE PRÉSENCE</th>
-                <th className="py-3 px-4 text-center">FICHE</th>
+                <th className="py-3 px-4">{t('attendance.colPlayer', 'JOUEUR')}</th>
+                <th className="py-3 px-3">{language === 'ar' ? 'المركز' : 'POSTE'}</th>
+                <th className="py-3 px-3 text-center">{language === 'ar' ? 'مجموع الحصص' : 'SÉANCES TOTAL'}</th>
+                <th className="py-3 px-3 text-center">{t('common.present', 'PRÉSENCES')}</th>
+                <th className="py-3 px-3 text-center">{t('common.absent', 'ABSENCES')}</th>
+                <th className="py-3 px-3 text-center">{t('common.excused', 'EXCUSÉS')}</th>
+                <th className="py-3 px-3 text-end">{language === 'ar' ? 'نسبة الحضور' : 'POURCENTAGE DE PRÉSENCE'}</th>
+                <th className="py-3 px-4 text-center">{language === 'ar' ? 'الملف' : 'FICHE'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {teamPlayers.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-slate-400">
-                    Aucun joueur dans cette catégorie.
+                    {language === 'ar' ? 'لا يوجد لاعبون في هذه الفئة.' : 'Aucun joueur dans cette catégorie.'}
                   </td>
                 </tr>
               ) : (
@@ -191,7 +206,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                         )}
                       </td>
                       <td className="py-3 px-3 text-slate-600">
-                        {player.position || 'Joueur'}
+                        {player.position || (language === 'ar' ? 'لاعب' : 'Joueur')}
                       </td>
                       <td className="py-3 px-3 text-center font-mono text-slate-700">
                         {stats.totalSessions}
@@ -199,20 +214,16 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                       <td className="py-3 px-3 text-center font-mono font-bold text-emerald-700">
                         {stats.attended}
                       </td>
-                      <td className="py-3 px-3 text-center font-mono font-bold text-rose-700">
+                      <td className="py-3 px-3 text-center font-mono font-bold text-rose-600">
                         {stats.absent}
                       </td>
-                      <td className="py-3 px-3 text-center font-mono text-amber-700">
+                      <td className="py-3 px-3 text-center font-mono text-amber-600">
                         {stats.excused}
                       </td>
-                      <td className="py-3 px-3 text-right">
+                      <td className="py-3 px-3 text-end">
                         <span
-                          className={`font-mono font-black text-sm tabular-nums ${
-                            stats.percentage >= 80
-                              ? 'text-emerald-700'
-                              : stats.percentage >= 65
-                              ? 'text-amber-700'
-                              : 'text-rose-700'
+                          className={`font-mono font-bold text-sm ${
+                            stats.percentage >= 80 ? 'text-emerald-700' : 'text-amber-700'
                           }`}
                         >
                           {stats.percentage} %
@@ -221,9 +232,9 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                       <td className="py-3 px-4 text-center">
                         <button
                           onClick={() => onNavigateToPlayer(player.id)}
-                          className="text-xs text-emerald-700 font-semibold hover:underline"
+                          className="text-xs text-emerald-700 font-semibold hover:underline cursor-pointer"
                         >
-                          Détails →
+                          {language === 'ar' ? 'الملف ←' : 'Fiche →'}
                         </button>
                       </td>
                     </tr>

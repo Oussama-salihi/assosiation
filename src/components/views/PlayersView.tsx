@@ -16,8 +16,9 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { Player } from '../../types';
-import { calculateAge, formatCurrency, formatDate, getWhatsAppUrl } from '../../utils/formatters';
+import { calculateAge, formatDate } from '../../utils/formatters';
 
 interface PlayersViewProps {
   onOpenNewPlayer: () => void;
@@ -43,7 +44,13 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
     getPlayerFinancials,
     getPlayerAttendanceStats,
     deletePlayer,
+    currentUser,
   } = useApp();
+
+  const { t, language, formatMoney, isRTL } = useLanguage();
+
+  const isCoach = currentUser.role === 'ENTRAINEUR';
+  const canDelete = currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'ADMIN';
 
   const [search, setSearch] = useState('');
   const [filterTeam, setFilterTeam] = useState('ALL');
@@ -51,7 +58,11 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedPlayerDetail, setSelectedPlayerDetail] = useState<Player | null>(() => {
     if (preselectedPlayerId) {
-      return players.find((p) => p.id === preselectedPlayerId) || null;
+      const pl = players.find((p) => p.id === preselectedPlayerId);
+      if (pl && isCoach && pl.teamId !== currentUser.assignedTeamId) {
+        return null;
+      }
+      return pl || null;
     }
     return null;
   });
@@ -65,13 +76,16 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
     return players
       .filter((p) => !p.isDeleted)
       .filter((p) => {
+        if (isCoach && p.teamId !== currentUser.assignedTeamId) {
+          return false;
+        }
         const fullName = `${p.firstName} ${p.lastName}`.toLowerCase();
         const matchesSearch = fullName.includes(search.toLowerCase());
         const matchesTeam = filterTeam === 'ALL' || p.teamId === filterTeam;
         const matchesStatus = filterStatus === 'ALL' || p.status === filterStatus;
         return matchesSearch && matchesTeam && matchesStatus;
       });
-  }, [players, search, filterTeam, filterStatus]);
+  }, [players, search, filterTeam, filterStatus, isCoach, currentUser.assignedTeamId]);
 
   const totalPages = Math.ceil(filteredPlayers.length / PAGE_SIZE) || 1;
   const paginatedPlayers = filteredPlayers.slice(
@@ -79,16 +93,31 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
     currentPage * PAGE_SIZE
   );
 
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'Actif':
+        return t('common.active', 'Actif');
+      case 'Inactif':
+        return t('common.inactive', 'Inactif');
+      case 'Suspendu':
+        return t('common.suspended', 'Suspendu');
+      case 'Ancien':
+        return t('common.former', 'Ancien');
+      default:
+        return status;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Joueurs ({filteredPlayers.length})
+            {t('players.title', 'Joueurs')} ({filteredPlayers.length})
           </h1>
           <p className="text-xs text-slate-500">
-            Effectif du club et fiches individuelles
+            {t('players.subtitle', 'Effectif du club et fiches individuelles')}
           </p>
         </div>
 
@@ -97,14 +126,14 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
           className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-2xs transition-colors shrink-0 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
-          <span>Ajouter un joueur</span>
+          <span>{t('players.newPlayer', 'Ajouter un joueur')}</span>
         </button>
       </div>
 
       {/* Filters */}
       <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center gap-3 text-xs">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 rtl:left-auto rtl:right-3 top-2.5 pointer-events-none" />
           <input
             type="text"
             value={search}
@@ -112,8 +141,10 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
               setSearch(e.target.value);
               setCurrentPage(1);
             }}
-            placeholder="Rechercher par nom..."
-            className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 focus:border-emerald-600 text-slate-900 outline-none text-xs"
+            placeholder={language === 'ar' ? 'البحث بالاسم...' : 'Rechercher par nom...'}
+            className={`w-full ${
+              isRTL ? 'pr-8 pl-3' : 'pl-8 pr-3'
+            } py-1.5 rounded-lg border border-slate-200 focus:border-emerald-600 text-slate-900 outline-none text-xs`}
           />
         </div>
 
@@ -123,9 +154,9 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
             setFilterTeam(e.target.value);
             setCurrentPage(1);
           }}
-          className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white text-xs"
+          className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white text-xs cursor-pointer"
         >
-          <option value="ALL">Toutes les équipes</option>
+          <option value="ALL">{t('players.filterTeam', 'Toutes les équipes')}</option>
           {teams.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name} ({t.category})
@@ -139,36 +170,36 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
             setFilterStatus(e.target.value);
             setCurrentPage(1);
           }}
-          className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white text-xs"
+          className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white text-xs cursor-pointer"
         >
-          <option value="ALL">Tous les statuts</option>
-          <option value="Actif">Actif</option>
-          <option value="Inactif">Inactif</option>
-          <option value="Suspendu">Suspendu</option>
-          <option value="Ancien">Ancien</option>
+          <option value="ALL">{t('players.filterStatus', 'Tous les statuts')}</option>
+          <option value="Actif">{t('common.active', 'Actif')}</option>
+          <option value="Inactif">{t('common.inactive', 'Inactif')}</option>
+          <option value="Suspendu">{t('common.suspended', 'Suspendu')}</option>
+          <option value="Ancien">{t('common.former', 'Ancien')}</option>
         </select>
       </div>
 
       {/* Simplified Table: Joueur, Âge, Équipe, Parent, Statut, Solde, Actions */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
+          <table className="w-full text-xs text-start">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
-                <th className="py-3 px-4">JOUEUR</th>
-                <th className="py-3 px-3">ÂGE</th>
-                <th className="py-3 px-3">ÉQUIPE</th>
-                <th className="py-3 px-3">PARENT</th>
-                <th className="py-3 px-3">STATUT</th>
-                <th className="py-3 px-3 text-right">SOLDE</th>
-                <th className="py-3 px-4 text-center">ACTIONS</th>
+                <th className="py-3 px-4">{t('players.colName', 'JOUEUR')}</th>
+                <th className="py-3 px-3">{language === 'ar' ? 'العمر' : 'ÂGE'}</th>
+                <th className="py-3 px-3">{t('players.colTeam', 'ÉQUIPE')}</th>
+                <th className="py-3 px-3">{t('players.colParent', 'PARENT')}</th>
+                <th className="py-3 px-3 text-center">{t('common.status', 'STATUT')}</th>
+                <th className="py-3 px-3 text-end">{language === 'ar' ? 'المستحقات' : 'SOLDE'}</th>
+                <th className="py-3 px-4 text-center">{t('common.actions', 'ACTIONS')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {paginatedPlayers.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-10 text-center text-slate-400">
-                    Aucun joueur trouvé.
+                    {language === 'ar' ? 'لم يتم العثور على لاعبين.' : 'Aucun joueur trouvé.'}
                   </td>
                 </tr>
               ) : (
@@ -197,7 +228,7 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
 
                       {/* Âge */}
                       <td className="py-3 px-3 text-slate-600 font-mono">
-                        {age} ans
+                        {age} {language === 'ar' ? 'سنة' : 'ans'}
                       </td>
 
                       {/* Équipe */}
@@ -211,7 +242,7 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                       </td>
 
                       {/* Statut */}
-                      <td className="py-3 px-3">
+                      <td className="py-3 px-3 text-center">
                         <span
                           className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
                             player.status === 'Actif'
@@ -219,14 +250,14 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                               : 'bg-slate-100 text-slate-600'
                           }`}
                         >
-                          {player.status}
+                          {getStatusLabel(player.status)}
                         </span>
                       </td>
 
                       {/* Solde */}
-                      <td className="py-3 px-3 text-right font-mono font-bold">
+                      <td className="py-3 px-3 text-end font-mono font-bold">
                         <span className={fin.remainingAmount > 0 ? 'text-rose-600' : 'text-emerald-700'}>
-                          {formatCurrency(fin.remainingAmount, settings.currency)}
+                          {formatMoney(fin.remainingAmount)}
                         </span>
                       </td>
 
@@ -239,28 +270,34 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                               setActivePlayerTab('info');
                             }}
                             className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-slate-100 rounded-lg cursor-pointer"
-                            title="Voir"
+                            title={t('common.viewProfile', 'Voir')}
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => onEditPlayer(player)}
                             className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg cursor-pointer"
-                            title="Modifier"
+                            title={t('common.edit', 'Modifier')}
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Supprimer le joueur ${player.firstName} ${player.lastName} ?`)) {
-                                deletePlayer(player.id);
-                              }
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
-                            title="Supprimer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canDelete && (
+                            <button
+                              onClick={() => {
+                                if (confirm(
+                                  language === 'ar'
+                                    ? `هل تريد بالتأكيد حذف اللاعب ${player.firstName} ${player.lastName}؟`
+                                    : `Supprimer le joueur ${player.firstName} ${player.lastName} ?`
+                                )) {
+                                  deletePlayer(player.id);
+                                }
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
+                              title={t('common.delete', 'Supprimer')}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -275,22 +312,24 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
         {totalPages > 1 && (
           <div className="p-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
             <span>
-              Page {currentPage} sur {totalPages}
+              {language === 'ar'
+                ? `صفحة ${currentPage} من ${totalPages}`
+                : `Page ${currentPage} sur ${totalPages}`}
             </span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="p-1 rounded border border-slate-200 disabled:opacity-30"
+                className="p-1 rounded border border-slate-200 disabled:opacity-30 cursor-pointer"
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
+                <ChevronLeft className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
               </button>
               <button
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="p-1 rounded border border-slate-200 disabled:opacity-30"
+                className="p-1 rounded border border-slate-200 disabled:opacity-30 cursor-pointer"
               >
-                <ChevronRight className="w-3.5 h-3.5" />
+                <ChevronRight className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
               </button>
             </div>
           </div>
@@ -315,14 +354,14 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                     {selectedPlayerDetail.firstName} {selectedPlayerDetail.lastName}
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Fiche joueur
+                    {t('players.detailsTitle', 'Fiche joueur')}
                   </p>
                 </div>
               </div>
 
               <button
                 onClick={() => setSelectedPlayerDetail(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -338,7 +377,7 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                     : 'border-transparent text-slate-500 hover:text-slate-900'
                 }`}
               >
-                Informations
+                {language === 'ar' ? 'المعلومات' : 'Informations'}
               </button>
               <button
                 onClick={() => setActivePlayerTab('payments')}
@@ -348,7 +387,7 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                     : 'border-transparent text-slate-500 hover:text-slate-900'
                 }`}
               >
-                Paiements
+                {t('payments.title', 'Paiements')}
               </button>
               <button
                 onClick={() => setActivePlayerTab('attendance')}
@@ -358,7 +397,7 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                     : 'border-transparent text-slate-500 hover:text-slate-900'
                 }`}
               >
-                Présences
+                {t('attendance.title', 'Présences')}
               </button>
             </div>
 
@@ -374,7 +413,7 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block mb-1">
-                        Nom complet
+                        {language === 'ar' ? 'الاسم الكامل' : 'Nom complet'}
                       </span>
                       <p className="font-bold text-slate-900 text-sm">
                         {selectedPlayerDetail.firstName} {selectedPlayerDetail.lastName}
@@ -383,16 +422,16 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
 
                     <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block mb-1">
-                        Âge & Date de naissance
+                        {language === 'ar' ? 'العمر وتاريخ الازدياد' : 'Âge & Date de naissance'}
                       </span>
                       <p className="font-semibold text-slate-900">
-                        {age} ans ({formatDate(selectedPlayerDetail.birthDate)})
+                        {age} {language === 'ar' ? 'سنة' : 'ans'} ({formatDate(selectedPlayerDetail.birthDate)})
                       </p>
                     </div>
 
                     <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block mb-1">
-                        Équipe
+                        {t('common.team', 'Équipe')}
                       </span>
                       <p className="font-semibold text-slate-900">
                         {team?.name || '-'} ({team?.category})
@@ -401,28 +440,28 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
 
                     <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block mb-1">
-                        Statut
+                        {t('common.status', 'Statut')}
                       </span>
                       <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                        {selectedPlayerDetail.status}
+                        {getStatusLabel(selectedPlayerDetail.status)}
                       </span>
                     </div>
 
                     <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block mb-1">
-                        Parent / Tuteur
+                        {t('common.parent', 'Parent / Tuteur')}
                       </span>
                       <p className="font-semibold text-slate-900">
-                        {parent ? `${parent.firstName} ${parent.lastName} (${parent.relation})` : 'Non renseigné'}
+                        {parent ? `${parent.firstName} ${parent.lastName} (${parent.relation})` : (language === 'ar' ? 'غير محدد' : 'Non renseigné')}
                       </p>
                     </div>
 
                     <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block mb-1">
-                        Téléphone
+                        {t('common.phone', 'Téléphone')}
                       </span>
                       <p className="font-mono font-medium text-slate-900">
-                        {parent?.phone || selectedPlayerDetail.phone || 'Non renseigné'}
+                        {parent?.phone || selectedPlayerDetail.phone || (language === 'ar' ? 'غير محدد' : 'Non renseigné')}
                       </p>
                     </div>
                   </div>
@@ -439,21 +478,27 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                     {/* Summary row */}
                     <div className="grid grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
                       <div>
-                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Total prévu</span>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">
+                          {t('players.expectedAmount', 'Total prévu')}
+                        </span>
                         <span className="font-mono font-bold text-slate-900 text-sm">
-                          {formatCurrency(fin.expectedAmount, settings.currency)}
+                          {formatMoney(fin.expectedAmount)}
                         </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Total payé</span>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">
+                          {t('players.paidAmount', 'Total payé')}
+                        </span>
                         <span className="font-mono font-bold text-emerald-700 text-sm">
-                          {formatCurrency(fin.paidAmount, settings.currency)}
+                          {formatMoney(fin.paidAmount)}
                         </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Reste à payer</span>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">
+                          {t('players.remainingAmount', 'Reste à payer')}
+                        </span>
                         <span className={`font-mono font-bold text-sm ${fin.remainingAmount > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                          {formatCurrency(fin.remainingAmount, settings.currency)}
+                          {formatMoney(fin.remainingAmount)}
                         </span>
                       </div>
                     </div>
@@ -468,27 +513,29 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                         }}
                         className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs cursor-pointer"
                       >
-                        + Enregistrer un paiement
+                        + {t('dashboard.recordPayment', 'Enregistrer un paiement')}
                       </button>
                     </div>
 
                     {/* Payment History Table */}
                     <div>
                       <span className="text-xs font-bold text-slate-700 uppercase block mb-2">
-                        Historique des règlements
+                        {language === 'ar' ? 'سجل المدفوعات' : 'Historique des règlements'}
                       </span>
                       {playerPayments.length === 0 ? (
-                        <p className="text-slate-400 py-3 italic">Aucun paiement enregistré.</p>
+                        <p className="text-slate-400 py-3 italic">
+                          {language === 'ar' ? 'لا توجد مدفوعات مسجلة.' : 'Aucun paiement enregistré.'}
+                        </p>
                       ) : (
                         <div className="border border-slate-200 rounded-lg overflow-hidden">
-                          <table className="w-full text-xs text-left">
+                          <table className="w-full text-xs text-start">
                             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
                               <tr>
-                                <th className="py-2 px-3">DATE</th>
-                                <th className="py-2 px-3">PÉRIODE</th>
-                                <th className="py-2 px-3">MODE</th>
-                                <th className="py-2 px-3 text-right">MONTANT</th>
-                                <th className="py-2 px-3 text-center">REÇU</th>
+                                <th className="py-2 px-3">{t('common.date', 'DATE')}</th>
+                                <th className="py-2 px-3">{t('payments.colPeriod', 'PÉRIODE')}</th>
+                                <th className="py-2 px-3">{t('payments.colMethod', 'MODE')}</th>
+                                <th className="py-2 px-3 text-end">{t('common.amount', 'MONTANT')}</th>
+                                <th className="py-2 px-3 text-center">{t('receipts.title', 'REÇU')}</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -497,15 +544,15 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                                   <td className="py-2 px-3 font-mono">{formatDate(p.date)}</td>
                                   <td className="py-2 px-3 text-slate-700">{p.period}</td>
                                   <td className="py-2 px-3 text-slate-600">{p.method}</td>
-                                  <td className="py-2 px-3 text-right font-mono font-bold text-emerald-700">
-                                    {formatCurrency(p.amount, settings.currency)}
+                                  <td className="py-2 px-3 text-end font-mono font-bold text-emerald-700">
+                                    {formatMoney(p.amount)}
                                   </td>
                                   <td className="py-2 px-3 text-center">
                                     <button
                                       onClick={() => onOpenReceipt(p.id)}
-                                      className="text-xs text-emerald-700 font-semibold hover:underline"
+                                      className="text-xs text-emerald-700 font-semibold hover:underline cursor-pointer"
                                     >
-                                      Reçu
+                                      {language === 'ar' ? 'الإيصال' : 'Reçu'}
                                     </button>
                                   </td>
                                 </tr>
@@ -527,25 +574,33 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                   <div className="space-y-4">
                     <div className="grid grid-cols-4 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
                       <div>
-                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Taux</span>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">
+                          {language === 'ar' ? 'النسبة' : 'Taux'}
+                        </span>
                         <span className={`text-xl font-bold font-mono ${stats.percentage >= 80 ? 'text-emerald-700' : 'text-amber-700'}`}>
                           {stats.percentage} %
                         </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Présences</span>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">
+                          {t('common.present', 'Présences')}
+                        </span>
                         <span className="text-xl font-bold font-mono text-emerald-700">
                           {stats.attended}
                         </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Absences</span>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">
+                          {t('common.absent', 'Absences')}
+                        </span>
                         <span className="text-xl font-bold font-mono text-rose-600">
                           {stats.absent}
                         </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Excusés</span>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">
+                          {t('common.excused', 'Excusés')}
+                        </span>
                         <span className="text-xl font-bold font-mono text-amber-600">
                           {stats.excused}
                         </span>
@@ -553,7 +608,9 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                     </div>
 
                     <p className="text-slate-500 text-xs">
-                      Basé sur {stats.totalSessions} séances programmées et pointées pour cette équipe.
+                      {language === 'ar'
+                        ? `بناءً على ${stats.totalSessions} حصة مبرمجة ومسجلة لهذا الفريق.`
+                        : `Basé sur ${stats.totalSessions} séances programmées et pointées pour cette équipe.`}
                     </p>
                   </div>
                 );

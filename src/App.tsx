@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import { AppProvider, useApp } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Sidebar, ActiveTab } from './components/layout/Sidebar';
@@ -36,6 +37,7 @@ import { Player, Parent, Team, TrainingSession, UserRole } from './types';
 
 function MainApp() {
   const { isAuthenticated, isLoading, currentUser } = useAuth();
+  const { isRTL } = useLanguage();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -184,7 +186,7 @@ function MainApp() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col lg:pl-64 min-w-0">
+      <div className={`flex-1 flex flex-col min-w-0 ${isRTL ? 'lg:pr-64 lg:pl-0' : 'lg:pl-64'}`}>
         <Header
           activeTab={activeTab}
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
@@ -356,10 +358,12 @@ function MainApp() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <AuthProvider>
-        <MainApp />
-      </AuthProvider>
-    </AppProvider>
+    <LanguageProvider>
+      <AppProvider>
+        <AuthProvider>
+          <MainApp />
+        </AuthProvider>
+      </AppProvider>
+    </LanguageProvider>
   );
 }

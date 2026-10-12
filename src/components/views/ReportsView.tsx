@@ -1,14 +1,11 @@
 import React, { useState } from 'react';
 import {
-  BarChart3,
-  Users,
-  UserCheck,
   FileSpreadsheet,
   Printer,
-  Calendar,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { formatCurrency, formatDate, calculateAge, exportToExcelCsv } from '../../utils/formatters';
+import { useLanguage } from '../../context/LanguageContext';
+import { formatDate, calculateAge, exportToExcelCsv } from '../../utils/formatters';
 
 export const ReportsView: React.FC = () => {
   const {
@@ -16,11 +13,13 @@ export const ReportsView: React.FC = () => {
     players,
     parents,
     teams,
-    settings,
     getPlayerFinancials,
     getParentFinancials,
     getPlayerAttendanceStats,
+    logExport,
   } = useApp();
+
+  const { t, language, formatMoney } = useLanguage();
 
   const [activeTab, setActiveTab] = useState<'finances' | 'joueurs' | 'parents'>('finances');
   const [periodFilter, setPeriodFilter] = useState<'today' | 'week' | 'month' | 'all'>('month');
@@ -69,7 +68,17 @@ export const ReportsView: React.FC = () => {
   // Export Excel
   const handleExport = () => {
     if (activeTab === 'finances') {
-      const headers = ['N° Paiement', 'Date', 'Joueur', 'Période', 'Mode', 'Montant (DH)'];
+      const filename = `Rapport_Finances_${todayStr}`;
+      if (!logExport('FINANCES', filename)) return;
+
+      const headers = [
+        language === 'ar' ? 'رقم الدفعة' : 'N° Paiement',
+        language === 'ar' ? 'التاريخ' : 'Date',
+        language === 'ar' ? 'اللاعب' : 'Joueur',
+        language === 'ar' ? 'الفترة' : 'Période',
+        language === 'ar' ? 'طريقة الأداء' : 'Mode',
+        language === 'ar' ? 'المبلغ (د.م)' : 'Montant (DH)',
+      ];
       const rows = filteredPayments.map((p) => {
         const pl = players.find((plyr) => plyr.id === p.playerId);
         return [
@@ -81,9 +90,19 @@ export const ReportsView: React.FC = () => {
           p.amount,
         ];
       });
-      exportToExcelCsv(`Rapport_Finances_${todayStr}`, headers, rows);
+      exportToExcelCsv(filename, headers, rows);
     } else if (activeTab === 'joueurs') {
-      const headers = ['Joueur', 'Âge', 'Équipe', 'Statut', 'Assiduité (%)', 'Reste (DH)'];
+      const filename = `Rapport_Joueurs_${todayStr}`;
+      if (!logExport('JOUEURS', filename)) return;
+
+      const headers = [
+        language === 'ar' ? 'اللاعب' : 'Joueur',
+        language === 'ar' ? 'العمر' : 'Âge',
+        language === 'ar' ? 'الفريق' : 'Équipe',
+        language === 'ar' ? 'الحالة' : 'Statut',
+        language === 'ar' ? 'المواظبة (%)' : 'Assiduité (%)',
+        language === 'ar' ? 'المستحقات (د.م)' : 'Reste (DH)',
+      ];
       const rows = activePlayers.map((p) => {
         const tm = teams.find((t) => t.id === p.teamId);
         const fin = getPlayerFinancials(p.id);
@@ -97,9 +116,18 @@ export const ReportsView: React.FC = () => {
           fin.remainingAmount,
         ];
       });
-      exportToExcelCsv(`Rapport_Joueurs_${todayStr}`, headers, rows);
+      exportToExcelCsv(filename, headers, rows);
     } else {
-      const headers = ['Parent', 'Téléphone', 'Enfants', 'Total Payé (DH)', 'Solde Dû (DH)'];
+      const filename = `Rapport_Parents_${todayStr}`;
+      if (!logExport('PARENTS', filename)) return;
+
+      const headers = [
+        language === 'ar' ? 'ولي الأمر' : 'Parent',
+        language === 'ar' ? 'الهاتف' : 'Téléphone',
+        language === 'ar' ? 'الأبناء' : 'Enfants',
+        language === 'ar' ? 'إجمالي المؤدى (د.م)' : 'Total Payé (DH)',
+        language === 'ar' ? 'المتبقي (د.م)' : 'Solde Dû (DH)',
+      ];
       const rows = activeParents.map((pr) => {
         const fin = getParentFinancials(pr.id);
         return [
@@ -110,7 +138,7 @@ export const ReportsView: React.FC = () => {
           fin.remaining,
         ];
       });
-      exportToExcelCsv(`Rapport_Parents_${todayStr}`, headers, rows);
+      exportToExcelCsv(filename, headers, rows);
     }
   };
 
@@ -120,10 +148,10 @@ export const ReportsView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Rapports
+            {t('reports.title', 'Rapports')}
           </h1>
           <p className="text-xs text-slate-500">
-            Analyses financières, effectifs des joueurs et situations des familles
+            {t('reports.subtitle', 'Analyses financières, effectifs des joueurs et situations des familles')}
           </p>
         </div>
 
@@ -134,14 +162,14 @@ export const ReportsView: React.FC = () => {
             className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-xs flex items-center gap-1.5 shadow-2xs transition-colors shrink-0 cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5" />
-            <span>Imprimer</span>
+            <span>{t('common.print', 'Imprimer')}</span>
           </button>
           <button
             onClick={handleExport}
             className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-2xs transition-colors shrink-0 cursor-pointer"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Exporter Excel</span>
+            <span>{t('common.exportExcel', 'Exporter Excel')}</span>
           </button>
         </div>
       </div>
@@ -156,7 +184,7 @@ export const ReportsView: React.FC = () => {
               : 'border-transparent text-slate-500 hover:text-slate-900'
           }`}
         >
-          Finances
+          {t('reports.tabFinances', 'Rapport Financier')}
         </button>
         <button
           onClick={() => setActiveTab('joueurs')}
@@ -166,7 +194,7 @@ export const ReportsView: React.FC = () => {
               : 'border-transparent text-slate-500 hover:text-slate-900'
           }`}
         >
-          Joueurs
+          {t('reports.tabPlayers', 'Rapport Joueurs')}
         </button>
         <button
           onClick={() => setActiveTab('parents')}
@@ -176,7 +204,7 @@ export const ReportsView: React.FC = () => {
               : 'border-transparent text-slate-500 hover:text-slate-900'
           }`}
         >
-          Parents
+          {t('reports.tabParents', 'Rapport Parents')}
         </button>
       </div>
 
@@ -185,82 +213,109 @@ export const ReportsView: React.FC = () => {
         <div className="space-y-5">
           {/* Filter Period */}
           <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between text-xs">
-            <span className="font-medium text-slate-600">Période :</span>
+            <span className="font-medium text-slate-600">
+              {language === 'ar' ? 'الفترة الزمنية:' : 'Période :'}
+            </span>
             <div className="inline-flex rounded-lg p-0.5 bg-slate-100 border border-slate-200 text-xs">
               <button
                 onClick={() => setPeriodFilter('today')}
-                className={`px-3 py-1 font-semibold rounded-md ${periodFilter === 'today' ? 'bg-white shadow-2xs text-slate-900' : 'text-slate-500'}`}
+                className={`px-3 py-1 font-semibold rounded-md cursor-pointer ${periodFilter === 'today' ? 'bg-white shadow-2xs text-slate-900' : 'text-slate-500'}`}
               >
-                Aujourd'hui
+                {language === 'ar' ? 'اليوم' : "Aujourd'hui"}
               </button>
               <button
                 onClick={() => setPeriodFilter('week')}
-                className={`px-3 py-1 font-semibold rounded-md ${periodFilter === 'week' ? 'bg-white shadow-2xs text-slate-900' : 'text-slate-500'}`}
+                className={`px-3 py-1 font-semibold rounded-md cursor-pointer ${periodFilter === 'week' ? 'bg-white shadow-2xs text-slate-900' : 'text-slate-500'}`}
               >
-                7 jours
+                {language === 'ar' ? '7 أيام' : '7 jours'}
               </button>
               <button
                 onClick={() => setPeriodFilter('month')}
-                className={`px-3 py-1 font-semibold rounded-md ${periodFilter === 'month' ? 'bg-white shadow-2xs text-slate-900' : 'text-slate-500'}`}
+                className={`px-3 py-1 font-semibold rounded-md cursor-pointer ${periodFilter === 'month' ? 'bg-white shadow-2xs text-slate-900' : 'text-slate-500'}`}
               >
-                Ce mois
+                {language === 'ar' ? 'هذا الشهر' : 'Ce mois'}
               </button>
               <button
                 onClick={() => setPeriodFilter('all')}
-                className={`px-3 py-1 font-semibold rounded-md ${periodFilter === 'all' ? 'bg-white shadow-2xs text-slate-900' : 'text-slate-500'}`}
+                className={`px-3 py-1 font-semibold rounded-md cursor-pointer ${periodFilter === 'all' ? 'bg-white shadow-2xs text-slate-900' : 'text-slate-500'}`}
               >
-                Toute la saison
+                {language === 'ar' ? 'الموسم بأكمله' : 'Toute la saison'}
               </button>
             </div>
           </div>
 
           {/* Cards : Total encaissé & Impayés */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-xs font-semibold text-slate-500 block">Total encaissé</span>
-              <span className="text-2xl font-bold font-mono text-emerald-700 block mt-1">
-                {formatCurrency(totalCollected, settings.currency)}
+              <span className="text-xs font-semibold text-slate-500 block">
+                {t('reports.totalRevenue', 'Total encaissé')}
+              </span>
+              <span className="text-2xl font-bold font-mono text-emerald-700 mt-1 block">
+                {formatMoney(totalCollected)}
+              </span>
+              <span className="text-[11px] text-slate-400 mt-1 block">
+                {filteredPayments.length} {language === 'ar' ? 'عملية مؤكدة' : 'règlements validés'}
               </span>
             </div>
 
             <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-xs font-semibold text-slate-500 block">Total impayés</span>
-              <span className="text-2xl font-bold font-mono text-rose-600 block mt-1">
-                {formatCurrency(totalUnpaid, settings.currency)}
+              <span className="text-xs font-semibold text-slate-500 block">
+                {t('reports.totalUnpaidRevenue', 'Total impayés')}
+              </span>
+              <span className="text-2xl font-bold font-mono text-rose-600 mt-1 block">
+                {formatMoney(totalUnpaid)}
+              </span>
+              <span className="text-[11px] text-slate-400 mt-1 block">
+                {language === 'ar' ? 'المتبقي لتحصيله هذا الموسم' : 'Reste à recouvrer sur la saison'}
               </span>
             </div>
           </div>
 
-          {/* Table des paiements de la période */}
+          {/* Table Transactions */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                {language === 'ar' ? 'سجل العمليات للفترة المحددة' : 'Détail des opérations sur la période'}
+              </h3>
+            </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <table className="w-full text-xs text-start">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
                   <tr>
-                    <th className="py-2.5 px-4">N° PAIEMENT</th>
-                    <th className="py-2.5 px-3">DATE</th>
-                    <th className="py-2.5 px-3">JOUEUR</th>
-                    <th className="py-2.5 px-3">PÉRIODE</th>
-                    <th className="py-2.5 px-3">MODE</th>
-                    <th className="py-2.5 px-4 text-right">MONTANT</th>
+                    <th className="py-2.5 px-4">{t('payments.colNum', 'N° PAIEMENT')}</th>
+                    <th className="py-2.5 px-3">{t('common.date', 'DATE')}</th>
+                    <th className="py-2.5 px-3">{t('common.player', 'JOUEUR')}</th>
+                    <th className="py-2.5 px-3">{t('payments.colPeriod', 'PÉRIODE')}</th>
+                    <th className="py-2.5 px-3">{t('payments.colMethod', 'MODE')}</th>
+                    <th className="py-2.5 px-4 text-end">{t('common.amount', 'MONTANT')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredPayments.map((p) => {
-                    const pl = players.find((plyr) => plyr.id === p.playerId);
-                    return (
-                      <tr key={p.id} className="hover:bg-slate-50">
-                        <td className="py-2.5 px-4 font-mono font-bold text-slate-800">{p.paymentNumber}</td>
-                        <td className="py-2.5 px-3 font-mono text-slate-600">{formatDate(p.date)}</td>
-                        <td className="py-2.5 px-3 font-bold text-slate-900">{pl ? `${pl.firstName} ${pl.lastName}` : '-'}</td>
-                        <td className="py-2.5 px-3 text-slate-700">{p.period}</td>
-                        <td className="py-2.5 px-3 text-slate-600">{p.method}</td>
-                        <td className="py-2.5 px-4 text-right font-mono font-bold text-emerald-700">
-                          {formatCurrency(p.amount, settings.currency)}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filteredPayments.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-400">
+                        {language === 'ar' ? 'لا توجد عمليات مسجلة في هذه الفترة.' : 'Aucun encaissement sur cette période.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredPayments.map((p) => {
+                      const pl = players.find((plyr) => plyr.id === p.playerId);
+                      return (
+                        <tr key={p.id}>
+                          <td className="py-2.5 px-4 font-mono font-bold text-slate-800">{p.paymentNumber}</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-600">{formatDate(p.date)}</td>
+                          <td className="py-2.5 px-3 font-bold text-slate-900">
+                            {pl ? `${pl.firstName} ${pl.lastName}` : '-'}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600">{p.period}</td>
+                          <td className="py-2.5 px-3 text-slate-600">{p.method}</td>
+                          <td className="py-2.5 px-4 text-end font-mono font-bold text-emerald-700">
+                            {formatMoney(p.amount)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -271,49 +326,30 @@ export const ReportsView: React.FC = () => {
       {/* ONGLET 2: JOUEURS */}
       {activeTab === 'joueurs' && (
         <div className="space-y-5">
-          {/* Effectif, Joueurs actifs, Joueurs inactifs, Assiduité */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-xs font-semibold text-slate-500 block">Effectif total</span>
-              <span className="text-2xl font-bold font-mono text-slate-900 block mt-1">
-                {activePlayers.length}
+              <span className="text-xs font-semibold text-slate-500 block">
+                {t('dashboard.activePlayers', 'Joueurs actifs')}
               </span>
-            </div>
-            <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-xs font-semibold text-slate-500 block">Joueurs actifs</span>
-              <span className="text-2xl font-bold font-mono text-emerald-700 block mt-1">
+              <span className="text-2xl font-bold font-mono text-emerald-700 mt-1 block">
                 {activePlayersCount}
               </span>
             </div>
             <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-xs font-semibold text-slate-500 block">Joueurs inactifs</span>
-              <span className="text-2xl font-bold font-mono text-slate-600 block mt-1">
+              <span className="text-xs font-semibold text-slate-500 block">
+                {language === 'ar' ? 'اللاعبون غير النشطين' : 'Joueurs inactifs'}
+              </span>
+              <span className="text-2xl font-bold font-mono text-slate-600 mt-1 block">
                 {inactivePlayersCount}
               </span>
             </div>
             <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-xs font-semibold text-slate-500 block">Assiduité moyenne</span>
-              <span className="text-2xl font-bold font-mono text-emerald-700 block mt-1">
+              <span className="text-xs font-semibold text-slate-500 block">
+                {t('attendance.overallRate', 'Taux de présence moyen')}
+              </span>
+              <span className="text-2xl font-bold font-mono text-emerald-700 mt-1 block">
                 {avgAttendance} %
               </span>
-            </div>
-          </div>
-
-          {/* Joueurs par équipe */}
-          <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">
-              Joueurs par équipe
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              {teams.map((t) => {
-                const count = activePlayers.filter((p) => p.teamId === t.id).length;
-                return (
-                  <div key={t.id} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-between">
-                    <span className="font-semibold text-slate-800">{t.category}</span>
-                    <span className="font-mono font-bold text-slate-900">{count} joueurs</span>
-                  </div>
-                );
-              })}
             </div>
           </div>
         </div>
@@ -322,62 +358,30 @@ export const ReportsView: React.FC = () => {
       {/* ONGLET 3: PARENTS */}
       {activeTab === 'parents' && (
         <div className="space-y-5">
-          {/* Nombre de familles, Parents avec plusieurs enfants, Parents avec impayés */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-xs font-semibold text-slate-500 block">Nombre de familles</span>
-              <span className="text-2xl font-bold font-mono text-slate-900 block mt-1">
+              <span className="text-xs font-semibold text-slate-500 block">
+                {t('parents.title', 'Parents enregistrés')}
+              </span>
+              <span className="text-2xl font-bold font-mono text-slate-900 mt-1 block">
                 {parentsCount}
               </span>
             </div>
             <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-xs font-semibold text-slate-500 block">Plusieurs enfants inscrits</span>
-              <span className="text-2xl font-bold font-mono text-emerald-700 block mt-1">
+              <span className="text-xs font-semibold text-slate-500 block">
+                {language === 'ar' ? 'أسر متعددة الأبناء' : 'Familles multi-enfants'}
+              </span>
+              <span className="text-2xl font-bold font-mono text-emerald-700 mt-1 block">
                 {multiChildrenParents.length}
               </span>
             </div>
             <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-xs font-semibold text-slate-500 block">Parents avec impayés</span>
-              <span className="text-2xl font-bold font-mono text-rose-600 block mt-1">
+              <span className="text-xs font-semibold text-slate-500 block">
+                {language === 'ar' ? 'أولياء أمور بمستحقات معلقة' : 'Parents avec impayés'}
+              </span>
+              <span className="text-2xl font-bold font-mono text-rose-600 mt-1 block">
                 {unpaidParents.length}
               </span>
-            </div>
-          </div>
-
-          {/* Liste récapitulative simple */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
-                  <tr>
-                    <th className="py-2.5 px-4">PARENT</th>
-                    <th className="py-2.5 px-3">TÉLÉPHONE</th>
-                    <th className="py-2.5 px-3 text-center">ENFANTS</th>
-                    <th className="py-2.5 px-3 text-right">TOTAL PAYÉ</th>
-                    <th className="py-2.5 px-4 text-right">SOLDE RESTANT</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {activeParents.map((pr) => {
-                    const fin = getParentFinancials(pr.id);
-                    return (
-                      <tr key={pr.id} className="hover:bg-slate-50">
-                        <td className="py-2.5 px-4 font-bold text-slate-900">{pr.firstName} {pr.lastName}</td>
-                        <td className="py-2.5 px-3 font-mono text-slate-600">{pr.phone}</td>
-                        <td className="py-2.5 px-3 text-center font-bold text-slate-700">{fin.childrenCount}</td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
-                          {formatCurrency(fin.paid, settings.currency)}
-                        </td>
-                        <td className="py-2.5 px-4 text-right font-mono font-bold">
-                          <span className={fin.remaining > 0 ? 'text-rose-600' : 'text-emerald-700'}>
-                            {formatCurrency(fin.remaining, settings.currency)}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
             </div>
           </div>
         </div>

@@ -16,12 +16,13 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { UserRole, User as UserType } from '../../types';
-import { formatDate } from '../../utils/formatters';
 
 export const UsersView: React.FC = () => {
   const { users, addUser, updateUser } = useApp();
   const { currentUser } = useAuth();
+  const { t, language, isRTL } = useLanguage();
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [userToEdit, setUserToEdit] = useState<UserType | null>(null);
@@ -32,68 +33,21 @@ export const UsersView: React.FC = () => {
   const [role, setRole] = useState<UserRole>('ADMIN');
   const [phone, setPhone] = useState('+212 6 ');
 
-  const rolesMatrix: Record<
-    UserRole,
-    { label: string; description: string; permissions: string[] }
-  > = {
-    SUPER_ADMIN: {
-      label: 'Super Admin',
-      description: 'Accès complet absolu à l\'ensemble du logiciel, finances, audit et paramètres.',
-      permissions: [
-        'Tableau de bord complet',
-        'Gestion totale des joueurs & parents',
-        'Gestion équipes & plannings',
-        'Finances, paiements & impayés',
-        'Émission et signature reçus',
-        'Gestion des utilisateurs & rôles',
-        'Consultation du journal d\'audit',
-        'Configuration paramètres club',
-      ],
-    },
-    ADMIN: {
-      label: 'Administrateur',
-      description: 'Gestion opérationnelle complète du club au quotidien.',
-      permissions: [
-        'Joueurs & fiches complètes',
-        'Parents & tuteurs',
-        'Équipes & plannings',
-        'Inscriptions de saison',
-        'Enregistrement des paiements',
-        'Présences & séances',
-        'Rapports d\'activité',
-      ],
-    },
-    COMPTABLE: {
-      label: 'Comptable',
-      description: 'Spécialisé dans les encaissements, suivi des impayés et reçus officiels.',
-      permissions: [
-        'Paiements & transactions',
-        'Suivi et relances des impayés',
-        'Émission des reçus officiels',
-        'Rapports financiers & export Excel',
-        'Consultation des fiches joueurs',
-      ],
-    },
-    ENTRAINEUR: {
-      label: 'Entraîneur',
-      description: 'Accès technique aux équipes assignées et gestion du terrain.',
-      permissions: [
-        'Ses équipes & effectifs',
-        'Consultation fiches sportives',
-        'Programmation des séances',
-        'Appel et pointage des présences',
-        'Suivi de l\'assiduité en direct',
-      ],
-    },
-    STAFF: {
-      label: 'Staff & Accueil',
-      description: 'Secrétariat, accueil des parents et consultations de base.',
-      permissions: [
-        'Consultation joueurs & parents',
-        'Inscriptions des nouveaux adhérents',
-        'Orientation & contacts familles',
-      ],
-    },
+  const getRoleLabel = (r: UserRole) => {
+    switch (r) {
+      case 'SUPER_ADMIN':
+        return t('users.roleSuperAdmin', 'Super Admin');
+      case 'ADMIN':
+        return t('users.roleAdmin', 'Administrateur');
+      case 'COMPTABLE':
+        return t('users.roleAccountant', 'Comptable');
+      case 'ENTRAINEUR':
+        return t('users.roleCoach', 'Entraîneur');
+      case 'STAFF':
+        return t('users.roleStaff', 'Staff');
+      default:
+        return r;
+    }
   };
 
   const handleCreateUser = (e: React.FormEvent) => {
@@ -104,37 +58,38 @@ export const UsersView: React.FC = () => {
       name,
       email,
       role,
-      phone,
+      phone: phone.trim() || undefined,
       active: true,
-      password: 'Atlas2026!',
     });
 
+    setShowAddModal(false);
     setName('');
     setEmail('');
+    setRole('ADMIN');
     setPhone('+212 6 ');
-    setShowAddModal(false);
   };
 
-  const handleUpdateUser = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUpdateRole = (newRole: UserRole) => {
     if (!userToEdit) return;
-
-    updateUser(userToEdit.id, {
-      name: userToEdit.name,
-      email: userToEdit.email,
-      role: userToEdit.role,
-      phone: userToEdit.phone,
-      active: userToEdit.active,
-    });
-
+    if (userToEdit.id === currentUser?.id) {
+      setUserToEdit(null);
+      return;
+    }
+    if (userToEdit.role === 'SUPER_ADMIN' && currentUser?.role !== 'SUPER_ADMIN') {
+      setUserToEdit(null);
+      return;
+    }
+    if (newRole === 'SUPER_ADMIN' && currentUser?.role !== 'SUPER_ADMIN') {
+      setUserToEdit(null);
+      return;
+    }
+    updateUser(userToEdit.id, { role: newRole });
     setUserToEdit(null);
   };
 
   const toggleUserStatus = (u: UserType) => {
-    if (u.id === currentUser?.id) {
-      alert("Vous ne pouvez pas désactiver votre propre compte administrateur.");
-      return;
-    }
+    if (u.id === currentUser?.id) return;
+    if (u.role === 'SUPER_ADMIN' && currentUser?.role !== 'SUPER_ADMIN') return;
     updateUser(u.id, { active: !u.active });
   };
 
@@ -143,12 +98,12 @@ export const UsersView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <UserCog className="w-5 h-5 text-emerald-600" />
-            <span>Utilisateurs & Gestion des Droits ({users.length})</span>
+            <span>{t('users.title', 'Utilisateurs & Droits d’accès')} ({users.length})</span>
           </h2>
           <p className="text-xs text-slate-500">
-            Gestion des comptes administratifs, assignation des rôles et contrôle d'accès
+            {t('users.subtitle', 'Comptes des collaborateurs du club')}
           </p>
         </div>
 
@@ -157,7 +112,7 @@ export const UsersView: React.FC = () => {
           className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors shrink-0 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
-          <span>Nouvel utilisateur</span>
+          <span>{t('users.newUser', 'Nouvel utilisateur')}</span>
         </button>
       </div>
 
@@ -165,23 +120,23 @@ export const UsersView: React.FC = () => {
       <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs overflow-hidden">
         <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
           <h3 className="font-bold text-xs uppercase tracking-wide text-slate-900">
-            Comptes du personnel du club
+            {language === 'ar' ? 'حسابات طاقم ومسؤولي النادي' : 'Comptes du personnel du club'}
           </h3>
           <span className="text-[11px] text-slate-400">
-            {users.filter(u => u.active).length} actifs sur {users.length}
+            {users.filter(u => u.active).length} {language === 'ar' ? 'نشط من أصل' : 'actifs sur'} {users.length}
           </span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
+          <table className="w-full text-xs text-start">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
-                <th className="py-3 px-4">NOM</th>
-                <th className="py-3 px-3">EMAIL</th>
-                <th className="py-3 px-3">TÉLÉPHONE</th>
-                <th className="py-3 px-3">RÔLE ATTRIBUÉ</th>
-                <th className="py-3 px-3 text-center">STATUT</th>
-                <th className="py-3 px-4 text-center">ACTIONS</th>
+                <th className="py-3 px-4">{t('users.colName', 'NOM')}</th>
+                <th className="py-3 px-3">{t('users.colEmail', 'EMAIL')}</th>
+                <th className="py-3 px-3">{t('users.colPhone', 'TÉLÉPHONE')}</th>
+                <th className="py-3 px-3">{t('users.colRole', 'RÔLE ATTRIBUÉ')}</th>
+                <th className="py-3 px-3 text-center">{t('users.colStatus', 'STATUT')}</th>
+                <th className="py-3 px-4 text-center">{t('common.actions', 'ACTIONS')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -195,8 +150,8 @@ export const UsersView: React.FC = () => {
                       <div>
                         <span>{u.name}</span>
                         {u.id === currentUser?.id && (
-                          <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200">
-                            Vous
+                          <span className="ml-2 rtl:ml-0 rtl:mr-2 px-1.5 py-0.5 rounded text-[10px] bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200">
+                            {language === 'ar' ? 'أنت' : 'Vous'}
                           </span>
                         )}
                       </div>
@@ -206,7 +161,7 @@ export const UsersView: React.FC = () => {
                   <td className="py-3 px-3 font-mono text-slate-600">{u.phone || '-'}</td>
                   <td className="py-3 px-3">
                     <span className="inline-block px-2.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
-                      {rolesMatrix[u.role]?.label || u.role}
+                      {getRoleLabel(u.role)}
                     </span>
                   </td>
                   <td className="py-3 px-3 text-center">
@@ -217,30 +172,37 @@ export const UsersView: React.FC = () => {
                           : 'bg-rose-100 text-rose-800'
                       }`}
                     >
-                      {u.active ? 'Actif' : 'Désactivé'}
+                      {u.active ? t('users.statusActive', 'Actif') : t('users.statusInactive', 'Désactivé')}
                     </span>
                   </td>
                   <td className="py-3 px-4 text-center">
                     <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => setUserToEdit({ ...u })}
-                        className="p-1.5 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
-                        title="Modifier l'utilisateur"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      {u.id !== currentUser?.id && (
+                      {u.id !== currentUser?.id && !(u.role === 'SUPER_ADMIN' && currentUser?.role !== 'SUPER_ADMIN') && (
+                        <button
+                          onClick={() => setUserToEdit({ ...u })}
+                          className="p-1.5 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
+                          title={t('users.editRole', 'Modifier')}
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {u.id !== currentUser?.id && !(u.role === 'SUPER_ADMIN' && currentUser?.role !== 'SUPER_ADMIN') && (
                         <button
                           onClick={() => toggleUserStatus(u)}
-                          className={`p-1.5 rounded-lg transition-colors ${
+                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                             u.active
                               ? 'text-rose-600 hover:bg-rose-50'
                               : 'text-emerald-600 hover:bg-emerald-50'
                           }`}
-                          title={u.active ? 'Désactiver le compte' : 'Activer le compte'}
+                          title={t('users.toggleStatus', 'Basculer statut')}
                         >
                           <Power className="w-3.5 h-3.5" />
                         </button>
+                      )}
+                      {u.id === currentUser?.id && (
+                        <span className="text-[11px] text-slate-400 font-medium italic">
+                          {language === 'ar' ? 'حسابك الحالي' : 'Votre compte'}
+                        </span>
                       )}
                     </div>
                   </td>
@@ -251,143 +213,96 @@ export const UsersView: React.FC = () => {
         </div>
       </div>
 
-      {/* Matrice des Rôles & Permissions */}
-      <div className="space-y-4">
-        <div>
-          <h3 className="font-bold text-sm text-slate-900">
-            Matrice des Rôles & Droits d'Accès
-          </h3>
-          <p className="text-xs text-slate-500">
-            Définition des prérogatives selon la fonction au sein du club
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {(Object.keys(rolesMatrix) as UserRole[]).map((rKey) => {
-            const rData = rolesMatrix[rKey];
-            return (
-              <div
-                key={rKey}
-                className="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-slate-900">{rData.label}</span>
-                    <span className="font-mono text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                      {rKey}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    {rData.description}
-                  </p>
-
-                  <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5 text-xs text-slate-700">
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
-                      Droits autorisés :
-                    </span>
-                    {rData.permissions.map((perm, idx) => (
-                      <div key={idx} className="flex items-center gap-1.5 text-[11px]">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <span>{perm}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Modal Ajout Utilisateur */}
+      {/* Modal Add User */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-          <div
-            className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
-              <h3 className="text-sm font-bold">Créer un compte utilisateur</h3>
+              <h3 className="font-bold text-base">
+                {t('users.newUser', 'Nouvel utilisateur')}
+              </h3>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="p-1 text-slate-400 hover:text-white"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
               >
-                &times;
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleCreateUser} className="p-6 space-y-4 text-xs">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Nom et Prénom <span className="text-rose-500">*</span>
+                  {t('users.colName', 'Nom')} *
                 </label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
-                  placeholder="ex: Tarik Sektioui"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
+                  placeholder="ex: Yassine Bounou"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 outline-none"
                 />
               </div>
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Email de connexion <span className="text-rose-500">*</span>
+                  {t('users.colEmail', 'Email')} *
                 </label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  placeholder="tarik@asatlasfoot.ma"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
+                  placeholder="nom@asatlasfoot.ma"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 outline-none"
                 />
               </div>
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Rôle attribué <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as UserRole)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                >
-                  <option value="SUPER_ADMIN">SUPER ADMIN</option>
-                  <option value="ADMIN">ADMINISTRATEUR</option>
-                  <option value="COMPTABLE">COMPTABLE</option>
-                  <option value="ENTRAINEUR">ENTRAÎNEUR</option>
-                  <option value="STAFF">STAFF</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Téléphone
+                  {t('users.colPhone', 'Téléphone')}
                 </label>
                 <input
                   type="text"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+212 6 XX XX XX XX"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-slate-900"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 outline-none font-mono"
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-200 flex justify-end gap-3">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  {t('users.colRole', 'Rôle')} *
+                </label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as UserRole)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 outline-none cursor-pointer"
+                >
+                  {currentUser?.role === 'SUPER_ADMIN' && (
+                    <option value="SUPER_ADMIN">{t('users.roleSuperAdmin', 'Super Admin')}</option>
+                  )}
+                  <option value="ADMIN">{t('users.roleAdmin', 'Administrateur')}</option>
+                  <option value="COMPTABLE">{t('users.roleAccountant', 'Comptable')}</option>
+                  <option value="ENTRAINEUR">{t('users.roleCoach', 'Entraîneur')}</option>
+                  <option value="STAFF">{t('users.roleStaff', 'Staff / Accueil')}</option>
+                </select>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 border rounded-lg"
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 font-semibold cursor-pointer"
                 >
-                  Annuler
+                  {t('common.cancel', 'Annuler')}
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700"
+                  className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer"
                 >
-                  Créer le compte
+                  {t('common.save', 'Enregistrer')}
                 </button>
               </div>
             </form>
@@ -395,108 +310,64 @@ export const UsersView: React.FC = () => {
         </div>
       )}
 
-      {/* Modal Edition Utilisateur */}
+      {/* Modal Edit Role */}
       {userToEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-          <div
-            className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
-              <h3 className="text-sm font-bold">Modifier l'utilisateur</h3>
+              <h3 className="font-bold text-base">
+                {t('users.editRole', 'Modifier le rôle')}
+              </h3>
               <button
                 onClick={() => setUserToEdit(null)}
-                className="p-1 text-slate-400 hover:text-white"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
               >
-                &times;
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleUpdateUser} className="p-6 space-y-4 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Nom et Prénom
-                </label>
-                <input
-                  type="text"
-                  value={userToEdit.name}
-                  onChange={(e) => setUserToEdit({ ...userToEdit, name: e.target.value })}
-                  required
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                />
-              </div>
+            <div className="p-6 space-y-4 text-xs">
+              <p className="font-bold text-slate-900">{userToEdit.name}</p>
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={userToEdit.email}
-                  onChange={(e) => setUserToEdit({ ...userToEdit, email: e.target.value })}
-                  required
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Rôle
+                  {t('users.colRole', 'Rôle attribué')}
                 </label>
                 <select
-                  value={userToEdit.role}
-                  onChange={(e) => setUserToEdit({ ...userToEdit, role: e.target.value as UserRole })}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
+                  defaultValue={userToEdit.role}
+                  id="role-edit-select"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 outline-none cursor-pointer"
                 >
-                  <option value="SUPER_ADMIN">SUPER ADMIN</option>
-                  <option value="ADMIN">ADMINISTRATEUR</option>
-                  <option value="COMPTABLE">COMPTABLE</option>
-                  <option value="ENTRAINEUR">ENTRAÎNEUR</option>
-                  <option value="STAFF">STAFF</option>
+                  {currentUser?.role === 'SUPER_ADMIN' && (
+                    <option value="SUPER_ADMIN">{t('users.roleSuperAdmin', 'Super Admin')}</option>
+                  )}
+                  <option value="ADMIN">{t('users.roleAdmin', 'Administrateur')}</option>
+                  <option value="COMPTABLE">{t('users.roleAccountant', 'Comptable')}</option>
+                  <option value="ENTRAINEUR">{t('users.roleCoach', 'Entraîneur')}</option>
+                  <option value="STAFF">{t('users.roleStaff', 'Staff')}</option>
                 </select>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Téléphone
-                </label>
-                <input
-                  type="text"
-                  value={userToEdit.phone || ''}
-                  onChange={(e) => setUserToEdit({ ...userToEdit, phone: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-slate-900"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="activeCheckbox"
-                  checked={userToEdit.active}
-                  onChange={(e) => setUserToEdit({ ...userToEdit, active: e.target.checked })}
-                  className="rounded text-emerald-600 focus:ring-emerald-500"
-                />
-                <label htmlFor="activeCheckbox" className="font-semibold text-slate-700">
-                  Compte actif
-                </label>
-              </div>
-
-              <div className="pt-3 border-t border-slate-200 flex justify-end gap-3">
+              <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setUserToEdit(null)}
-                  className="px-4 py-2 border rounded-lg"
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 font-semibold cursor-pointer"
                 >
-                  Annuler
+                  {t('common.cancel', 'Annuler')}
                 </button>
                 <button
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700"
+                  type="button"
+                  onClick={() => {
+                    const sel = document.getElementById('role-edit-select') as HTMLSelectElement;
+                    if (sel) handleUpdateRole(sel.value as UserRole);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer"
                 >
-                  Enregistrer
+                  {t('common.save', 'Enregistrer')}
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Wallet, CheckCircle2, ReceiptText } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { PaymentMethod } from '../../types';
-import { formatCurrency } from '../../utils/formatters';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -18,16 +18,19 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   onPaymentSuccess,
 }) => {
   const { players, parents, teams, addPayment, getPlayerFinancials, settings } = useApp();
+  const { t, language, formatMoney } = useLanguage();
 
   const [playerId, setPlayerId] = useState(preselectedPlayerId || '');
   const [amount, setAmount] = useState<number | ''>('');
-  const [period, setPeriod] = useState('Octobre 2026');
+  const [period, setPeriod] = useState(language === 'ar' ? 'أكتوبر 2026' : 'Octobre 2026');
   const [method, setMethod] = useState<PaymentMethod>('Espèces');
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
 
   // State after submission
   const [savedPaymentId, setSavedPaymentId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (preselectedPlayerId) {
@@ -41,6 +44,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     } else {
       setSavedPaymentId(null);
     }
+    setErrorMessage(null);
   }, [preselectedPlayerId, isOpen]);
 
   if (!isOpen) return null;
@@ -53,26 +57,43 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!playerId) return;
-    const numAmount = Number(amount);
-    if (isNaN(numAmount) || numAmount <= 0) return;
+    if (!playerId || isSubmitting) return;
 
-    const newPayment = addPayment({
-      playerId,
-      parentId: selectedParent?.id,
-      amount: numAmount,
-      date: new Date().toISOString().split('T')[0],
-      period,
-      method,
-      reference,
-      notes,
-    });
+    setErrorMessage(null);
+    setIsSubmitting(true);
 
-    setSavedPaymentId(newPayment.id);
+    try {
+      const numAmount = Number(amount);
+      if (isNaN(numAmount) || numAmount <= 0) {
+        setErrorMessage(language === 'ar' ? 'يرجى إدخال مبلغ صحيح أكبر من 0' : 'Veuillez saisir un montant valide supérieur à 0 DH.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const newPayment = addPayment({
+        playerId,
+        parentId: selectedParent?.id,
+        amount: numAmount,
+        date: new Date().toISOString().split('T')[0],
+        period,
+        method,
+        reference: reference.trim(),
+        notes: notes.trim(),
+      });
+
+      setSavedPaymentId(newPayment.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur lors de l\'enregistrement';
+      setErrorMessage(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleClose = () => {
     setSavedPaymentId(null);
+    setErrorMessage(null);
+    setIsSubmitting(false);
     onClose();
   };
 
@@ -86,12 +107,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           <div className="flex items-center gap-2">
             <Wallet className="w-5 h-5 text-emerald-400" />
             <h3 className="text-sm font-bold tracking-tight">
-              Enregistrer un paiement
+              {t('payments.newPayment', 'Enregistrer un paiement')}
             </h3>
           </div>
           <button
             onClick={handleClose}
-            className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+            className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -106,10 +127,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
             <div>
               <h4 className="text-lg font-bold text-slate-900">
-                Paiement enregistré avec succès
+                {language === 'ar' ? 'تم تسجيل الدفعة بنجاح' : 'Paiement enregistré avec succès'}
               </h4>
               <p className="text-xs text-slate-500 mt-1">
-                Le solde du joueur et de la famille a été mis à jour instantanément.
+                {language === 'ar'
+                  ? 'تم تحديث الرصيد المالي للاعب والأسرة فورياً.'
+                  : 'Le solde du joueur et de la famille a été mis à jour instantanément.'}
               </p>
             </div>
 
@@ -119,7 +142,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 onClick={handleClose}
                 className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
               >
-                Fermer
+                {t('common.close', 'Fermer')}
               </button>
               <button
                 type="button"
@@ -131,7 +154,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer"
               >
                 <ReceiptText className="w-4 h-4" />
-                <span>Voir le reçu</span>
+                <span>{language === 'ar' ? 'معاينة الإيصال' : 'Voir le reçu'}</span>
               </button>
             </div>
           </div>
@@ -140,7 +163,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             {/* Joueur */}
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Joueur <span className="text-rose-500">*</span>
+                {t('payments.selectPlayer', 'Joueur')} <span className="text-rose-500">*</span>
               </label>
               <select
                 value={playerId}
@@ -154,9 +177,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   }
                 }}
                 required
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 outline-none text-slate-900 font-medium"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 outline-none text-slate-900 font-medium cursor-pointer"
               >
-                <option value="">-- Sélectionner le joueur --</option>
+                <option value="">-- {language === 'ar' ? 'اختر اللاعب' : 'Sélectionner le joueur'} --</option>
                 {activePlayers.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.firstName} {p.lastName}
@@ -169,21 +192,21 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             {selectedPlayer && (
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Parent :</span>
+                  <span className="text-slate-500">{t('common.parent', 'Parent')} :</span>
                   <span className="font-bold text-slate-800">
                     {selectedParent ? `${selectedParent.firstName} ${selectedParent.lastName}` : '-'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Équipe :</span>
+                  <span className="text-slate-500">{t('common.team', 'Équipe')} :</span>
                   <span className="font-bold text-slate-800">
                     {selectedTeam?.name} ({selectedTeam?.category})
                   </span>
                 </div>
                 <div className="flex items-center justify-between pt-1 border-t border-slate-200">
-                  <span className="text-slate-600 font-medium">Solde actuel restant :</span>
+                  <span className="text-slate-600 font-medium">{t('unpaid.colRemaining', 'Solde actuel restant')} :</span>
                   <span className={`font-mono font-bold ${playerFinancials && playerFinancials.remainingAmount > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                    {playerFinancials ? formatCurrency(playerFinancials.remainingAmount, settings.currency) : '-'}
+                    {playerFinancials ? formatMoney(playerFinancials.remainingAmount) : '-'}
                   </span>
                 </div>
               </div>
@@ -192,7 +215,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             {/* Montant */}
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Montant ({settings.currency}) <span className="text-rose-500">*</span>
+                {t('payments.paymentAmount', 'Montant')} ({language === 'ar' ? 'د.م' : settings.currency}) <span className="text-rose-500">*</span>
               </label>
               <input
                 type="number"
@@ -209,14 +232,14 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             {/* Période */}
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Période <span className="text-rose-500">*</span>
+                {t('payments.paymentPeriod', 'Période')} <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
                 value={period}
                 onChange={(e) => setPeriod(e.target.value)}
                 required
-                placeholder="ex: Octobre 2026"
+                placeholder={language === 'ar' ? 'أكتوبر 2026' : 'Octobre 2026'}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 outline-none text-slate-900"
               />
             </div>
@@ -224,31 +247,31 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             {/* Mode de paiement */}
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Mode de paiement <span className="text-rose-500">*</span>
+                {t('payments.paymentMethod', 'Mode de paiement')} <span className="text-rose-500">*</span>
               </label>
               <select
                 value={method}
                 onChange={(e) => setMethod(e.target.value as PaymentMethod)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 outline-none text-slate-900"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 outline-none text-slate-900 cursor-pointer"
               >
-                <option value="Espèces">Espèces</option>
-                <option value="Virement bancaire">Virement bancaire</option>
-                <option value="Chèque">Chèque</option>
-                <option value="Carte bancaire">Carte bancaire</option>
-                <option value="Autre">Autre</option>
+                <option value="Espèces">{t('common.cash', 'Espèces')}</option>
+                <option value="Virement bancaire">{t('common.bankTransfer', 'Virement bancaire')}</option>
+                <option value="Chèque">{t('common.cheque', 'Chèque')}</option>
+                <option value="Carte bancaire">{t('common.creditCard', 'Carte bancaire')}</option>
+                <option value="Autre">{t('common.other', 'Autre')}</option>
               </select>
             </div>
 
             {/* Référence */}
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Référence (facultatif)
+                {t('payments.referenceLabel', 'Référence (facultatif)')}
               </label>
               <input
                 type="text"
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
-                placeholder="N° chèque ou référence virement"
+                placeholder={language === 'ar' ? 'رقم الشيك أو الحوالة' : 'N° chèque ou référence virement'}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 outline-none text-slate-900 font-mono"
               />
             </div>
@@ -256,16 +279,22 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             {/* Note */}
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Note (facultatif)
+                {t('common.notes', 'Remarques')}
               </label>
               <input
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Note interne..."
+                placeholder={language === 'ar' ? 'ملاحظة داخلية...' : 'Note interne...'}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 outline-none text-slate-900"
               />
             </div>
+
+            {errorMessage && (
+              <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                {errorMessage}
+              </div>
+            )}
 
             {/* Bouton Enregistrer le paiement */}
             <div className="pt-2 flex items-center justify-end gap-2">
@@ -274,14 +303,14 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 onClick={handleClose}
                 className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-semibold cursor-pointer"
               >
-                Annuler
+                {t('common.cancel', 'Annuler')}
               </button>
               <button
                 type="submit"
-                disabled={!playerId || !amount}
+                disabled={!playerId || !amount || isSubmitting}
                 className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold cursor-pointer"
               >
-                Enregistrer le paiement
+                {isSubmitting ? '...' : t('dashboard.recordPayment', 'Enregistrer le paiement')}
               </button>
             </div>
           </form>

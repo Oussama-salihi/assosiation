@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Lock, Mail, ArrowRight, AlertCircle, CheckCircle2, KeyRound } from 'lucide-react';
+import { Lock, Mail, ArrowRight, AlertCircle, CheckCircle2, KeyRound, Check } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const LoginPage: React.FC = () => {
   const { login, resetPassword } = useAuth();
   const { settings } = useApp();
+  const { t, language, setLanguage, isRTL } = useLanguage();
 
   const [email, setEmail] = useState('direction@asatlasfoot.ma');
   const [password, setPassword] = useState('Atlas2026!');
@@ -27,7 +29,10 @@ export const LoginPage: React.FC = () => {
     setIsLoading(false);
 
     if (!result.success) {
-      setError(result.error || 'Identifiants incorrects.');
+      setError(
+        result.error ||
+          (language === 'ar' ? 'البيانات المدخلة غير صحيحة.' : 'Identifiants incorrects.')
+      );
     }
   };
 
@@ -40,9 +45,21 @@ export const LoginPage: React.FC = () => {
     const res = await resetPassword(forgotEmail);
     setIsForgotLoading(false);
     if (res.success) {
-      setForgotMessage({ type: 'success', text: res.message });
+      setForgotMessage({
+        type: 'success',
+        text:
+          language === 'ar'
+            ? 'تم إرسال رابط استعادة كلمة المرور إلى بريدك الإلكتروني.'
+            : res.message,
+      });
     } else {
-      setForgotMessage({ type: 'error', text: res.message });
+      setForgotMessage({
+        type: 'error',
+        text:
+          language === 'ar'
+            ? 'تعذر إرسال الرابط. تأكد من صحة البريد الإلكتروني.'
+            : res.message,
+      });
     }
   };
 
@@ -53,7 +70,33 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col justify-center items-center p-4 selection:bg-emerald-600 selection:text-white">
+    <div className="min-h-screen bg-slate-100 flex flex-col justify-center items-center p-4 selection:bg-emerald-600 selection:text-white relative">
+      {/* Top Language Switcher */}
+      <div className="absolute top-4 right-4 rtl:right-auto rtl:left-4 z-10 flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+        <button
+          onClick={() => setLanguage('fr')}
+          className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+            language === 'fr'
+              ? 'bg-emerald-600 text-white shadow-2xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <span>🇫🇷</span>
+          <span>Français</span>
+        </button>
+        <button
+          onClick={() => setLanguage('ar')}
+          className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+            language === 'ar'
+              ? 'bg-emerald-600 text-white shadow-2xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <span>🇲🇦</span>
+          <span>العربية</span>
+        </button>
+      </div>
+
       <div className="w-full max-w-md">
         {/* Brand Header */}
         <div className="text-center mb-8">
@@ -69,10 +112,10 @@ export const LoginPage: React.FC = () => {
             />
           </div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-            AS Atlas Foot
+            {t('auth.loginTitle', settings.shortName)}
           </h1>
           <p className="text-sm text-slate-500 font-medium mt-1">
-            Gestion de l'association
+            {t('auth.loginSubtitle', "Gestion de l'association")}
           </p>
         </div>
 
@@ -88,17 +131,19 @@ export const LoginPage: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
             <div>
               <label className="block font-semibold text-slate-700 mb-1.5">
-                Email
+                {t('auth.emailLabel', 'Email')}
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3 rtl:left-auto rtl:right-3 top-3 pointer-events-none" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   placeholder="nom@asatlasfoot.ma"
-                  className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 text-slate-900 text-sm outline-none"
+                  className={`w-full ${
+                    isRTL ? 'pr-9 pl-3' : 'pl-9 pr-3'
+                  } py-2.5 rounded-lg border border-slate-300 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 text-slate-900 text-sm outline-none`}
                 />
               </div>
             </div>
@@ -106,18 +151,20 @@ export const LoginPage: React.FC = () => {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="font-semibold text-slate-700">
-                  Mot de passe
+                  {t('auth.passwordLabel', 'Mot de passe')}
                 </label>
               </div>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 rtl:left-auto rtl:right-3 top-3 pointer-events-none" />
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   placeholder="••••••••"
-                  className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 text-slate-900 text-sm outline-none"
+                  className={`w-full ${
+                    isRTL ? 'pr-9 pl-3' : 'pl-9 pr-3'
+                  } py-2.5 rounded-lg border border-slate-300 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 text-slate-900 text-sm outline-none`}
                 />
               </div>
             </div>
@@ -127,8 +174,12 @@ export const LoginPage: React.FC = () => {
               disabled={isLoading}
               className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition-colors mt-2 cursor-pointer"
             >
-              <span>{isLoading ? 'Connexion en cours...' : 'Se connecter'}</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>
+                {isLoading
+                  ? t('auth.loggingIn', 'Connexion en cours...')
+                  : t('auth.loginButton', 'Se connecter')}
+              </span>
+              <ArrowRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />
             </button>
 
             <div className="text-center pt-2">
@@ -141,7 +192,7 @@ export const LoginPage: React.FC = () => {
                 }}
                 className="text-xs text-emerald-700 hover:text-emerald-800 font-medium cursor-pointer"
               >
-                Mot de passe oublié ?
+                {t('auth.forgotPassword', 'Mot de passe oublié ?')}
               </button>
             </div>
           </form>
@@ -149,41 +200,48 @@ export const LoginPage: React.FC = () => {
           {/* Discreet Credentials Helper (Collapsible) */}
           <details className="pt-3 border-t border-slate-100 text-[11px] text-slate-500">
             <summary className="cursor-pointer font-medium hover:text-slate-800 text-center select-none">
-              Comptes d'accès préconfigurés
+              {t('auth.testAccounts', "Comptes d'accès préconfigurés")}
             </summary>
             <div className="mt-2.5 space-y-1.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200/70">
               <div className="flex justify-between items-center">
-                <span className="font-semibold text-slate-700">Direction (Super Admin)</span>
+                <span className="font-semibold text-slate-700">
+                  {t('auth.superAdmin', 'Direction (Super Admin)')}
+                </span>
                 <button
                   type="button"
                   onClick={() => fillQuickCredentials('direction@asatlasfoot.ma')}
-                  className="text-emerald-700 hover:underline font-mono text-[10px]"
+                  className="text-emerald-700 hover:underline font-mono text-[10px] cursor-pointer"
                 >
                   direction@asatlasfoot.ma
                 </button>
               </div>
               <div className="flex justify-between items-center">
-                <span className="font-semibold text-slate-700">Comptabilité</span>
+                <span className="font-semibold text-slate-700">
+                  {t('auth.accountant', 'Comptabilité')}
+                </span>
                 <button
                   type="button"
                   onClick={() => fillQuickCredentials('compta@asatlasfoot.ma')}
-                  className="text-emerald-700 hover:underline font-mono text-[10px]"
+                  className="text-emerald-700 hover:underline font-mono text-[10px] cursor-pointer"
                 >
                   compta@asatlasfoot.ma
                 </button>
               </div>
               <div className="flex justify-between items-center">
-                <span className="font-semibold text-slate-700">Coach Rachid</span>
+                <span className="font-semibold text-slate-700">
+                  {t('auth.coach', 'Coach Rachid')}
+                </span>
                 <button
                   type="button"
                   onClick={() => fillQuickCredentials('rachid.coach@asatlasfoot.ma')}
-                  className="text-emerald-700 hover:underline font-mono text-[10px]"
+                  className="text-emerald-700 hover:underline font-mono text-[10px] cursor-pointer"
                 >
                   rachid.coach@asatlasfoot.ma
                 </button>
               </div>
               <div className="text-[10px] text-slate-400 pt-1 text-center">
-                Mot de passe : <code className="font-mono font-bold text-slate-600">Atlas2026!</code>
+                {language === 'ar' ? 'كلمة المرور:' : 'Mot de passe :'}{' '}
+                <code className="font-mono font-bold text-slate-600">Atlas2026!</code>
               </div>
             </div>
           </details>
@@ -201,10 +259,14 @@ export const LoginPage: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 shadow-xl space-y-4">
             <div className="flex items-center gap-2.5">
               <KeyRound className="w-5 h-5 text-emerald-600" />
-              <h3 className="font-bold text-base text-slate-900">Mot de passe oublié</h3>
+              <h3 className="font-bold text-base text-slate-900">
+                {t('auth.forgotTitle', 'Mot de passe oublié')}
+              </h3>
             </div>
             <p className="text-xs text-slate-500">
-              Saisissez votre adresse email pour recevoir un lien de réinitialisation sécurisé.
+              {language === 'ar'
+                ? 'أدخل عنوان بريدك الإلكتروني لتلقي رابط إعادة تعيين كلمة المرور.'
+                : 'Saisissez votre adresse email pour recevoir un lien de réinitialisation sécurisé.'}
             </p>
 
             {forgotMessage && (
@@ -227,7 +289,7 @@ export const LoginPage: React.FC = () => {
             <form onSubmit={handleForgotSubmit} className="space-y-3 text-xs">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Email du compte
+                  {t('auth.emailLabel', 'Email du compte')}
                 </label>
                 <input
                   type="email"
@@ -245,14 +307,16 @@ export const LoginPage: React.FC = () => {
                   onClick={() => setShowForgotModal(false)}
                   className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 font-semibold cursor-pointer"
                 >
-                  Fermer
+                  {t('common.close', 'Fermer')}
                 </button>
                 <button
                   type="submit"
                   disabled={isForgotLoading}
                   className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer"
                 >
-                  {isForgotLoading ? 'Envoi...' : 'Envoyer le lien'}
+                  {isForgotLoading
+                    ? t('common.loading', 'Envoi...')
+                    : t('auth.sendResetLink', 'Envoyer le lien')}
                 </button>
               </div>
             </form>

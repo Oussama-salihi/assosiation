@@ -2,16 +2,14 @@ import React, { useState } from 'react';
 import {
   Shield,
   Plus,
-  CalendarDays,
-  Clock,
   Eye,
   Edit2,
   X,
-  Users,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Team, Player } from '../../types';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { useLanguage } from '../../context/LanguageContext';
+import { Team } from '../../types';
+import { formatDate } from '../../utils/formatters';
 
 interface TeamsViewProps {
   onOpenNewTeam: () => void;
@@ -32,11 +30,21 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
     teams,
     players,
     sessions,
-    settings,
+    currentUser,
   } = useApp();
+
+  const { t, language, formatMoney } = useLanguage();
+
+  const isCoach = currentUser.role === 'ENTRAINEUR';
+  const visibleTeams = isCoach
+    ? teams.filter((t) => t.id === currentUser.assignedTeamId)
+    : teams;
 
   const [selectedTeamDetail, setSelectedTeamDetail] = useState<Team | null>(() => {
     if (preselectedTeamId) {
+      if (isCoach && preselectedTeamId !== currentUser.assignedTeamId) {
+        return null;
+      }
       return teams.find((t) => t.id === preselectedTeamId) || null;
     }
     return null;
@@ -48,25 +56,29 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Équipes & Catégories ({teams.length})
+            {t('teams.title', 'Équipes & Catégories')} ({visibleTeams.length})
           </h1>
           <p className="text-xs text-slate-500">
-            De U7 aux Seniors, encadrement technique et plannings
+            {isCoach
+              ? (language === 'ar' ? 'فريقك التدريبي المعين' : 'Votre équipe assignée')
+              : t('teams.subtitle', 'De U7 aux Seniors, encadrement technique et plannings')}
           </p>
         </div>
 
-        <button
-          onClick={onOpenNewTeam}
-          className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-2xs transition-colors shrink-0 cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Créer une équipe</span>
-        </button>
+        {!isCoach && (
+          <button
+            onClick={onOpenNewTeam}
+            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-2xs transition-colors shrink-0 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{t('teams.newTeam', 'Créer une équipe')}</span>
+          </button>
+        )}
       </div>
 
-      {/* Cartes Simples : U7, U9, U11, U13, U15, U17, Senior */}
+      {/* Cartes Simples */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {teams.map((team) => {
+        {visibleTeams.map((team) => {
           const teamPlayers = players.filter(
             (p) => p.teamId === team.id && !p.isDeleted && p.status === 'Actif'
           );
@@ -92,29 +104,29 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                         {team.name}
                       </h3>
                       <p className="text-xs text-slate-500">
-                        Coach : <strong className="text-slate-700">{team.coachName}</strong>
+                        {t('common.coach', 'Coach')} : <strong className="text-slate-700">{team.coachName}</strong>
                       </p>
                     </div>
                   </div>
 
                   <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[11px]">
-                    {teamPlayers.length} joueurs
+                    {teamPlayers.length} {language === 'ar' ? 'لاعبين' : 'joueurs'}
                   </span>
                 </div>
 
                 {/* Details : Cotisation mensuelle & Prochaine séance */}
                 <div className="mt-4 pt-3 border-t border-slate-100 space-y-2 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Cotisation mensuelle :</span>
+                    <span className="text-slate-500">{t('teams.colFee', 'Cotisation mensuelle')} :</span>
                     <span className="font-mono font-bold text-slate-900">
-                      {team.monthlyFee} {settings.currency} / mois
+                      {formatMoney(team.monthlyFee)} / {language === 'ar' ? 'شهر' : 'mois'}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Prochaine séance :</span>
+                    <span className="text-slate-500">{language === 'ar' ? 'الحصة القادمة:' : 'Prochaine séance :'}</span>
                     <span className="font-medium text-emerald-800">
-                      {nextSession ? `${formatDate(nextSession.date)} (${nextSession.time})` : `${team.trainingDays[0] || 'Hebdo'} ${team.trainingTime}`}
+                      {nextSession ? `${formatDate(nextSession.date)} (${nextSession.time})` : `${team.trainingDays[0] || ''} ${team.trainingTime}`}
                     </span>
                   </div>
                 </div>
@@ -126,21 +138,21 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                   onClick={() => onOpenQuickSession(team.id)}
                   className="text-emerald-700 font-semibold hover:underline cursor-pointer"
                 >
-                  + Séance
+                  + {language === 'ar' ? 'حصة جديدة' : 'Séance'}
                 </button>
 
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setSelectedTeamDetail(team)}
                     className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 cursor-pointer"
-                    title="Voir"
+                    title={t('common.viewProfile', 'Voir')}
                   >
                     <Eye className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => onEditTeam(team)}
                     className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 cursor-pointer"
-                    title="Modifier"
+                    title={t('common.edit', 'Modifier')}
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
@@ -164,12 +176,12 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                   {selectedTeamDetail.name} ({selectedTeamDetail.category})
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Coach : {selectedTeamDetail.coachName}
+                  {t('common.coach', 'Coach')} : {selectedTeamDetail.coachName}
                 </p>
               </div>
               <button
                 onClick={() => setSelectedTeamDetail(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -177,14 +189,14 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
 
             <div className="p-6 overflow-y-auto space-y-4 text-xs">
               <div className="p-3 bg-slate-50 rounded-xl space-y-1 text-xs">
-                <p><strong>Lieu :</strong> {selectedTeamDetail.trainingLocation}</p>
-                <p><strong>Créneaux :</strong> {selectedTeamDetail.trainingDays.join(', ')} à {selectedTeamDetail.trainingTime}</p>
-                <p><strong>Cotisation :</strong> {selectedTeamDetail.monthlyFee} {settings.currency} / mois</p>
+                <p><strong>{t('teams.trainingLocation', 'Lieu')} :</strong> {selectedTeamDetail.trainingLocation}</p>
+                <p><strong>{t('teams.trainingDays', 'Créneaux')} :</strong> {selectedTeamDetail.trainingDays.join(', ')} à {selectedTeamDetail.trainingTime}</p>
+                <p><strong>{t('teams.colFee', 'Cotisation')} :</strong> {formatMoney(selectedTeamDetail.monthlyFee)} / {language === 'ar' ? 'شهر' : 'mois'}</p>
               </div>
 
               <div>
                 <span className="text-xs font-bold text-slate-800 uppercase block mb-2">
-                  Liste des joueurs ({players.filter((p) => p.teamId === selectedTeamDetail.id && !p.isDeleted).length})
+                  {language === 'ar' ? 'قائمة اللاعبين' : 'Liste des joueurs'} ({players.filter((p) => p.teamId === selectedTeamDetail.id && !p.isDeleted).length})
                 </span>
                 <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
                   {players
@@ -202,9 +214,9 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                             setSelectedTeamDetail(null);
                             onNavigateToPlayer(player.id);
                           }}
-                          className="text-xs text-emerald-700 font-semibold hover:underline"
+                          className="text-xs text-emerald-700 font-semibold hover:underline cursor-pointer"
                         >
-                          Fiche →
+                          {language === 'ar' ? 'الملف ←' : 'Fiche →'}
                         </button>
                       </div>
                     ))}

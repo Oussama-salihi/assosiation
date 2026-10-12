@@ -1,14 +1,65 @@
 import { User } from '../types';
 import { INITIAL_USERS } from '../data/seedData';
+import {
+  hashPassword,
+  verifyPassword,
+  checkLoginRateLimit,
+  recordFailedLoginAttempt,
+  resetLoginAttempts,
+  createSecureSession,
+  isSessionValid,
+  SecureSessionData,
+} from '../utils/security';
 
 export interface AuthInstance {
   currentUser: User | null;
 }
 
-const AUTH_STORAGE_KEY = 'as_atlas_auth_session_user_id';
+const AUTH_STORAGE_KEY = 'as_atlas_auth_session_data_v2';
+const LEGACY_AUTH_STORAGE_KEY = 'as_atlas_auth_session_user_id';
 const USERS_STORAGE_KEY = 'maroc_football_academy_db_v1_users';
 
 type AuthStateCallback = (user: User | null) => void;
+
+/**
+ * Nettoie les données sensibles d'un utilisateur avant exposition au client
+ */
+export function sanitizeUser(user: User): User {
+  const sanitized = { ...user };
+  delete sanitized.password;
+  return sanitized;
+}
+
+function safeGetItem(key: string): string | null {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem(key);
+    }
+  } catch {
+    // Ignore storage errors in restricted contexts
+  }
+  return null;
+}
+
+function safeSetItem(key: string, value: string): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(key, value);
+    }
+  } catch {
+    // Ignore
+  }
+}
+
+function safeRemoveItem(key: string): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore
+  }
+}
 
 class FirebaseAuthService {
   private listeners: Set<AuthStateCallback> = new Set();
@@ -21,9 +72,12 @@ class FirebaseAuthService {
 
   private getUsers(): User[] {
     try {
-      const stored = localStorage.getItem(USERS_STORAGE_KEY);
+      const stored = safeGetItem(USERS_STORAGE_KEY);
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
       }
     } catch (e) {
       console.warn('Error reading stored users:', e);
@@ -33,16 +87,43 @@ class FirebaseAuthService {
 
   private restoreSession() {
     try {
-      const savedUserId = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (savedUserId) {
-        const users = this.getUsers();
-        const found = users.find((u) => u.id === savedUserId && u.active);
-        if (found) {
-          this._currentUser = found;
-        } else {
-          localStorage.removeItem(AUTH_STORAGE_KEY);
-          this._currentUser = null;
+      // 1. Lire la session v2 sécurisée avec horodatage d'expiration
+      const savedSessionRaw = safeGetItem(AUTH_STORAGE_KEY);
+      let session: SecureSessionData | null = null;
+
+      if (savedSessionRaw) {
+        try {
+          session = JSON.parse(savedSessionRaw);
+        } catch {
+          session = null;
         }
+      } else {
+        // Migration rétrocompatible éventuelle depuis legacy
+        const legacyUserId = localStorage.getItem(LEGACY_AUTH_STORAGE_KEY);
+        if (legacyUserId) {
+          session = createSecureSession(legacyUserId);
+          localStorage.removeItem(LEGACY_AUTH_STORAGE_KEY);
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+        }
+      }
+
+      if (session && isSessionValid(session)) {
+        const users = this.getUsers();
+        const found = users.find((u) => u.id === session!.userId && u.active);
+        if (found) {
+          // Mettre à jour lastActiveAt
+          session.lastActiveAt = Date.now();
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+          this._currentUser = sanitizeUser(found);
+        } else {
+          // Utilisateur introuvable ou désactivé
+          this.clearSession();
+        }
+      } else if (session && !isSessionValid(session)) {
+        // Session expirée
+        this.clearSession();
+      } else {
+        this._currentUser = null;
       }
     } catch (e) {
       console.warn('Error restoring session:', e);
@@ -52,9 +133,33 @@ class FirebaseAuthService {
     }
   }
 
+  private clearSession() {
+    this._currentUser = null;
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_AUTH_STORAGE_KEY);
+  }
+
   get currentUser(): User | null {
     if (!this.isInitialized) {
       this.restoreSession();
+    } else if (this._currentUser) {
+      // Vérifier si la session n'a pas expiré entre-temps
+      const savedSessionRaw = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (savedSessionRaw) {
+        try {
+          const session: SecureSessionData = JSON.parse(savedSessionRaw);
+          if (!isSessionValid(session)) {
+            this.clearSession();
+            this.notifyListeners();
+          } else {
+            // Prolonger l'activité
+            session.lastActiveAt = Date.now();
+            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+          }
+        } catch {
+          this.clearSession();
+        }
+      }
     }
     return this._currentUser;
   }
@@ -81,31 +186,74 @@ class FirebaseAuthService {
 
   async signInWithEmailAndPassword(email: string, password: string): Promise<{ user: User }> {
     const cleanEmail = email.trim().toLowerCase();
+
+    // 1. Vérification Anti-Brute-Force
+    const rateLimit = checkLoginRateLimit(cleanEmail);
+    if (!rateLimit.isAllowed) {
+      const minutes = Math.ceil((rateLimit.remainingLockoutSeconds || 60) / 60);
+      throw new Error(
+        `Compte temporairement verrouillé suite à de multiples tentatives erronées. Veuillez réessayer dans ${minutes} minute(s).`
+      );
+    }
+
     const users = this.getUsers();
     const user = users.find((u) => u.email.toLowerCase() === cleanEmail);
 
     if (!user) {
-      throw new Error('Identifiant introuvable. Veuillez vérifier votre adresse email.');
+      recordFailedLoginAttempt(cleanEmail);
+      throw new Error('Identifiant ou mot de passe incorrect.');
     }
 
     if (!user.active) {
       throw new Error("Ce compte utilisateur a été désactivé par l'administrateur.");
     }
 
-    const validPassword = user.password || 'Atlas2026!';
-    if (password !== validPassword && password !== 'Atlas2026!') {
-      throw new Error('Mot de passe incorrect. Veuillez réessayer.');
+    // 2. Vérification sécurisée du mot de passe (gestion hash et défaut 'Atlas2026!')
+    let isPasswordCorrect = false;
+    const defaultPassword = 'Atlas2026!';
+    const defaultHash = await hashPassword(defaultPassword);
+
+    if (user.password) {
+      if (user.password.length === 64) {
+        // C'est un hash SHA-256
+        isPasswordCorrect = await verifyPassword(password, user.password);
+      } else {
+        // Mot de passe texte ou mot de passe par défaut
+        isPasswordCorrect = password === user.password || password === defaultPassword;
+      }
+    } else {
+      isPasswordCorrect = password === defaultPassword;
     }
 
-    this._currentUser = user;
-    localStorage.setItem(AUTH_STORAGE_KEY, user.id);
+    if (!isPasswordCorrect) {
+      const failure = recordFailedLoginAttempt(cleanEmail);
+      if (failure.locked) {
+        throw new Error(
+          'Trop de tentatives infructueuses. Votre compte a été temporairement verrouillé pour 15 minutes.'
+        );
+      }
+      throw new Error(
+        `Mot de passe incorrect. Il vous reste ${failure.attemptsLeft} tentative(s) avant verrouillage.`
+      );
+    }
+
+    // Réinitialiser les tentatives après succès
+    resetLoginAttempts(cleanEmail);
+
+    // 3. Création de session sécurisée avec TTL
+    const session = createSecureSession(user.id);
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+
+    // Assainir l'utilisateur avant de l'assigner à currentUser
+    const sanitized = sanitizeUser(user);
+    this._currentUser = sanitized;
     this.notifyListeners();
-    return { user };
+
+    return { user: sanitized };
   }
 
   async signOut(): Promise<void> {
-    this._currentUser = null;
-    localStorage.removeItem(AUTH_STORAGE_KEY);
+    this.clearSession();
     this.notifyListeners();
   }
 

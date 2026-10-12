@@ -3,13 +3,10 @@ import {
   ReceiptText,
   Search,
   Printer,
-  Calendar,
-  Wallet,
-  CheckCircle2,
-  FileCheck2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { useLanguage } from '../../context/LanguageContext';
+import { formatDate } from '../../utils/formatters';
 
 interface ReceiptsViewProps {
   onOpenReceiptModal: (paymentId: string) => void;
@@ -18,7 +15,8 @@ interface ReceiptsViewProps {
 export const ReceiptsView: React.FC<ReceiptsViewProps> = ({
   onOpenReceiptModal,
 }) => {
-  const { receipts, payments, players, parents, teams, settings } = useApp();
+  const { receipts, payments, players, parents } = useApp();
+  const { t, language, formatMoney, isRTL } = useLanguage();
 
   const [search, setSearch] = useState('');
 
@@ -41,52 +39,54 @@ export const ReceiptsView: React.FC<ReceiptsViewProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <ReceiptText className="w-5 h-5 text-emerald-600" />
-            <span>Reçus Officiels de Paiement ({receipts.length})</span>
+            <span>{t('receipts.title', 'Reçus Officiels')} ({receipts.length})</span>
           </h2>
           <p className="text-xs text-slate-500">
-            Quittances officielles numérotées, conformes aux exigences administratives de l'association
+            {t('receipts.subtitle', 'Reçus officiels de cotisation numérotés')}
           </p>
         </div>
       </div>
 
       {/* Search Bar */}
-      <div className="p-4 bg-white rounded-xl border border-slate-200/90 shadow-2xs">
+      <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs">
         <div className="relative max-w-md text-xs">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 rtl:left-auto rtl:right-3 top-2.5 pointer-events-none" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher par N° de reçu, joueur ou parent..."
-            className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 text-slate-900 outline-none"
+            placeholder={language === 'ar' ? 'البحث برقم الإيصال، اللاعب أو ولي الأمر...' : 'Rechercher par N° de reçu, joueur ou parent...'}
+            className={`w-full ${
+              isRTL ? 'pr-8 pl-3' : 'pl-8 pr-3'
+            } py-1.5 rounded-lg border border-slate-200 focus:border-emerald-600 text-slate-900 outline-none text-xs`}
           />
         </div>
       </div>
 
       {/* Receipts Table */}
-      <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
+          <table className="w-full text-xs text-start">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
-                <th className="py-3 px-4">N° REÇU OFFICIEL</th>
-                <th className="py-3 px-3">DATE D'ÉMISSION</th>
-                <th className="py-3 px-3">PAYEUR (PARENT)</th>
-                <th className="py-3 px-3">BÉNÉFICIAIRE (JOUEUR)</th>
-                <th className="py-3 px-3">PÉRIODE CONCERNÉE</th>
-                <th className="py-3 px-3">MODE DE RÈGLEMENT</th>
-                <th className="py-3 px-3 text-right">MONTANT ENCAISSÉ</th>
-                <th className="py-3 px-3">ÉMIS PAR</th>
-                <th className="py-3 px-4 text-center">ACTION</th>
+                <th className="py-3 px-4">{t('receipts.colNumber', 'N° REÇU')}</th>
+                <th className="py-3 px-3">{t('receipts.colDate', "DATE D'ÉMISSION")}</th>
+                <th className="py-3 px-3">{language === 'ar' ? 'المؤدي (ولي الأمر)' : 'PAYEUR (PARENT)'}</th>
+                <th className="py-3 px-3">{t('receipts.forPlayer', 'JOUEUR')}</th>
+                <th className="py-3 px-3">{language === 'ar' ? 'الفترة' : 'PÉRIODE'}</th>
+                <th className="py-3 px-3">{t('payments.colMethod', 'MODE')}</th>
+                <th className="py-3 px-3 text-end">{t('receipts.colAmount', 'MONTANT ENCAISSÉ')}</th>
+                <th className="py-3 px-3">{language === 'ar' ? 'حرر من طرف' : 'ÉMIS PAR'}</th>
+                <th className="py-3 px-4 text-center">{t('common.actions', 'ACTION')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredReceipts.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="py-12 text-center text-slate-400">
-                    Aucun reçu officiel trouvé.
+                    {language === 'ar' ? 'لم يتم العثور على أي إيصال رسمي.' : 'Aucun reçu officiel trouvé.'}
                   </td>
                 </tr>
               ) : (
@@ -115,8 +115,8 @@ export const ReceiptsView: React.FC<ReceiptsViewProps> = ({
                       <td className="py-3 px-3 text-slate-700">
                         {pay?.method || '-'}
                       </td>
-                      <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700 text-sm tabular-nums">
-                        {pay ? formatCurrency(pay.amount, settings.currency) : '-'}
+                      <td className="py-3 px-3 text-end font-mono font-bold text-emerald-700 text-sm tabular-nums">
+                        {pay ? formatMoney(pay.amount) : '-'}
                       </td>
                       <td className="py-3 px-3 text-slate-500 text-[11px]">
                         {rec.generatedBy}
@@ -124,10 +124,10 @@ export const ReceiptsView: React.FC<ReceiptsViewProps> = ({
                       <td className="py-3 px-4 text-center">
                         <button
                           onClick={() => onOpenReceiptModal(rec.paymentId)}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 mx-auto transition-colors shadow-2xs"
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 mx-auto transition-colors shadow-2xs cursor-pointer"
                         >
                           <Printer className="w-3.5 h-3.5" />
-                          <span>Imprimer / PDF</span>
+                          <span>{language === 'ar' ? 'طباعة / PDF' : 'Imprimer / PDF'}</span>
                         </button>
                       </td>
                     </tr>

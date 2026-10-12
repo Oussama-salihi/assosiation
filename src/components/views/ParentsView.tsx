@@ -3,16 +3,15 @@ import {
   UserCheck,
   Search,
   Plus,
-  Phone,
   MessageSquare,
   Eye,
   Edit2,
-  Trash2,
   X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { Parent } from '../../types';
-import { formatCurrency, getWhatsAppUrl } from '../../utils/formatters';
+import { getWhatsAppUrl } from '../../utils/formatters';
 
 interface ParentsViewProps {
   onOpenNewParent: () => void;
@@ -35,8 +34,9 @@ export const ParentsView: React.FC<ParentsViewProps> = ({
     teams,
     settings,
     getParentFinancials,
-    deleteParent,
   } = useApp();
+
+  const { t, language, formatMoney, isRTL } = useLanguage();
 
   const [search, setSearch] = useState('');
   const [selectedParentDetail, setSelectedParentDetail] = useState<Parent | null>(() => {
@@ -56,16 +56,29 @@ export const ParentsView: React.FC<ParentsViewProps> = ({
       );
     });
 
+  const getRelationLabel = (rel: string) => {
+    switch (rel) {
+      case 'Père':
+        return t('parents.father', 'Père');
+      case 'Mère':
+        return t('parents.mother', 'Mère');
+      case 'Tuteur légal':
+        return t('parents.guardian', 'Tuteur légal');
+      default:
+        return rel;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Parents & Familles ({filteredParents.length})
+            {t('parents.title', 'Parents & Familles')} ({filteredParents.length})
           </h1>
           <p className="text-xs text-slate-500">
-            Contacts des tuteurs légaux et gestion des fratries
+            {t('parents.subtitle', 'Contacts des tuteurs légaux et gestion des fratries')}
           </p>
         </div>
 
@@ -74,20 +87,22 @@ export const ParentsView: React.FC<ParentsViewProps> = ({
           className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-2xs transition-colors shrink-0 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
-          <span>Ajouter un parent</span>
+          <span>{t('parents.newParent', 'Ajouter un parent')}</span>
         </button>
       </div>
 
       {/* Search */}
       <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs">
         <div className="relative max-w-sm text-xs">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 rtl:left-auto rtl:right-3 top-2.5 pointer-events-none" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher par nom, téléphone..."
-            className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 focus:border-emerald-600 text-slate-900 outline-none text-xs"
+            placeholder={language === 'ar' ? 'البحث بالاسم أو الهاتف...' : 'Rechercher par nom, téléphone...'}
+            className={`w-full ${
+              isRTL ? 'pr-8 pl-3' : 'pl-8 pr-3'
+            } py-1.5 rounded-lg border border-slate-200 focus:border-emerald-600 text-slate-900 outline-none text-xs`}
           />
         </div>
       </div>
@@ -115,22 +130,24 @@ export const ParentsView: React.FC<ParentsViewProps> = ({
                       {parent.firstName} {parent.lastName}
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {parent.relation} · <span className="font-mono">{parent.phone}</span>
+                      {getRelationLabel(parent.relation)} · <span className="font-mono">{parent.phone}</span>
                     </p>
                   </div>
                   <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[11px]">
-                    {children.length} enfant{children.length > 1 ? 's' : ''}
+                    {children.length} {language === 'ar' ? 'أبناء' : `enfant${children.length > 1 ? 's' : ''}`}
                   </span>
                 </div>
 
-                {/* Enfants : Youssef — U11, Adam — U9, Sara — U7 */}
+                {/* Enfants */}
                 <div className="mt-4 pt-3 border-t border-slate-100">
                   <span className="text-[10px] text-slate-400 font-bold uppercase block mb-1.5">
-                    Enfants :
+                    {language === 'ar' ? 'الأبناء المسجلون:' : 'Enfants :'}
                   </span>
                   <div className="space-y-1 text-xs">
                     {children.length === 0 ? (
-                      <span className="text-slate-400 italic">Aucun enfant assigné</span>
+                      <span className="text-slate-400 italic">
+                        {language === 'ar' ? 'لا يوجد أبناء مسجلون' : 'Aucun enfant assigné'}
+                      </span>
                     ) : (
                       children.map((ch) => {
                         const t = teams.find((tm) => tm.id === ch.teamId);
@@ -154,15 +171,19 @@ export const ParentsView: React.FC<ParentsViewProps> = ({
                 {/* Total payé & Solde restant */}
                 <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                   <div>
-                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Total payé</span>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">
+                      {t('players.paidAmount', 'Total payé')}
+                    </span>
                     <span className="font-mono font-bold text-emerald-700">
-                      {formatCurrency(fin.paid, settings.currency)}
+                      {formatMoney(fin.paid)}
                     </span>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Solde restant</span>
+                  <div className="text-end">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">
+                      {t('players.remainingAmount', 'Solde restant')}
+                    </span>
                     <span className={`font-mono font-bold ${fin.remaining > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                      {formatCurrency(fin.remaining, settings.currency)}
+                      {formatMoney(fin.remaining)}
                     </span>
                   </div>
                 </div>
@@ -177,21 +198,21 @@ export const ParentsView: React.FC<ParentsViewProps> = ({
                   className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold text-xs flex items-center gap-1.5 transition-colors"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
-                  <span>WhatsApp</span>
+                  <span>{t('common.whatsapp', 'WhatsApp')}</span>
                 </a>
 
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setSelectedParentDetail(parent)}
                     className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 cursor-pointer"
-                    title="Voir"
+                    title={t('common.viewProfile', 'Voir')}
                   >
                     <Eye className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => onEditParent(parent)}
                     className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 cursor-pointer"
-                    title="Modifier"
+                    title={t('common.edit', 'Modifier')}
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
@@ -206,7 +227,7 @@ export const ParentsView: React.FC<ParentsViewProps> = ({
       {selectedParentDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div
-            className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden max-h-[85vh] flex flex-col animate-in zoom-in-95 duration-150"
+            className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden max-h-[85vh] flex flex-col animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
@@ -215,60 +236,61 @@ export const ParentsView: React.FC<ParentsViewProps> = ({
                   {selectedParentDetail.firstName} {selectedParentDetail.lastName}
                 </h3>
                 <p className="text-xs text-slate-400">
-                  {selectedParentDetail.relation} · {selectedParentDetail.phone}
+                  {getRelationLabel(selectedParentDetail.relation)}
                 </p>
               </div>
               <button
                 onClick={() => setSelectedParentDetail(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="p-6 overflow-y-auto space-y-4 text-xs">
-              <div className="p-3 bg-slate-50 rounded-xl space-y-1">
-                <span className="text-slate-400 text-[10px] font-bold uppercase block">Adresse</span>
-                <p className="text-slate-800 font-medium">{selectedParentDetail.address}</p>
-                {selectedParentDetail.email && (
-                  <p className="text-slate-600 mt-1">{selectedParentDetail.email}</p>
-                )}
+              <div className="p-3 bg-slate-50 rounded-xl space-y-1 text-xs">
+                <p><strong>{t('common.phone', 'Téléphone')} :</strong> {selectedParentDetail.phone}</p>
+                {selectedParentDetail.email && <p><strong>{t('common.email', 'Email')} :</strong> {selectedParentDetail.email}</p>}
+                {selectedParentDetail.address && <p><strong>{t('common.address', 'Adresse')} :</strong> {selectedParentDetail.address}</p>}
               </div>
 
               <div>
                 <span className="text-xs font-bold text-slate-800 uppercase block mb-2">
-                  Enfants inscrits et règlements
+                  {language === 'ar' ? 'الأبناء' : 'Enfants'} ({players.filter((p) => p.parentId === selectedParentDetail.id && !p.isDeleted).length})
                 </span>
-                <div className="space-y-2">
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
                   {players
                     .filter((p) => p.parentId === selectedParentDetail.id && !p.isDeleted)
-                    .map((child) => {
-                      const childTeam = teams.find((t) => t.id === child.teamId);
-                      return (
-                        <div
-                          key={child.id}
-                          className="p-3 rounded-lg border border-slate-200 flex items-center justify-between"
-                        >
-                          <div>
-                            <span className="font-bold text-slate-900 text-sm block">
-                              {child.firstName} {child.lastName}
-                            </span>
-                            <span className="text-slate-500 text-[11px]">
-                              {childTeam?.name} ({childTeam?.category})
-                            </span>
-                          </div>
+                    .map((player) => (
+                      <div
+                        key={player.id}
+                        className="p-2.5 flex items-center justify-between hover:bg-slate-50"
+                      >
+                        <span className="font-semibold text-slate-900">
+                          {player.firstName} {player.lastName}
+                        </span>
+                        <div className="flex items-center gap-2">
                           <button
                             onClick={() => {
                               setSelectedParentDetail(null);
-                              onNavigateToPlayer(child.id);
+                              onOpenQuickPayment(player.id);
                             }}
-                            className="text-xs text-emerald-700 font-semibold hover:underline"
+                            className="text-xs text-emerald-700 font-semibold hover:underline cursor-pointer"
                           >
-                            Fiche joueur →
+                            + {t('dashboard.recordPayment', 'Paiement')}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedParentDetail(null);
+                              onNavigateToPlayer(player.id);
+                            }}
+                            className="text-xs text-slate-500 hover:underline cursor-pointer"
+                          >
+                            {language === 'ar' ? 'الملف ←' : 'Fiche →'}
                           </button>
                         </div>
-                      );
-                    })}
+                      </div>
+                    ))}
                 </div>
               </div>
             </div>

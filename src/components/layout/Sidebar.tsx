@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { UserRole } from '../../types';
 
 export type ActiveTab =
@@ -49,6 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { settings, players, getPlayerFinancials } = useApp();
   const { currentUser } = useAuth();
+  const { t, isRTL, language } = useLanguage();
 
   // Count players with unpaid fees for badge
   const unpaidCount = players.filter(
@@ -97,101 +99,100 @@ export const Sidebar: React.FC<SidebarProps> = ({
     items: NavItem[];
   }
 
-  // Simplified Sections as requested
   const sections: NavSection[] = [
     {
-      title: 'ACCUEIL',
+      title: t('nav.homeSection', 'ACCUEIL'),
       items: [
         {
           id: 'dashboard',
-          label: 'Tableau de bord',
+          label: t('nav.dashboard', 'Tableau de bord'),
           icon: LayoutDashboard,
         },
       ],
     },
     {
-      title: 'CLUB',
+      title: t('nav.clubSection', 'CLUB'),
       items: [
         {
           id: 'players',
-          label: 'Joueurs',
+          label: t('nav.players', 'Joueurs'),
           icon: Users,
         },
         {
           id: 'parents',
-          label: 'Parents',
+          label: t('nav.parents', 'Parents'),
           icon: UserCheck,
         },
         {
           id: 'teams',
-          label: 'Équipes',
+          label: t('nav.teams', 'Équipes'),
           icon: Shield,
         },
         {
           id: 'registrations',
-          label: 'Inscriptions',
+          label: t('nav.registrations', 'Inscriptions'),
           icon: FileCheck2,
         },
       ],
     },
     {
-      title: 'FINANCES',
+      title: t('nav.financesSection', 'FINANCES'),
       items: [
         {
           id: 'payments',
-          label: 'Paiements',
+          label: t('nav.payments', 'Paiements'),
           icon: Wallet,
         },
         {
           id: 'unpaid',
-          label: 'Impayés',
+          label: t('nav.unpaid', 'Impayés'),
           icon: AlertCircle,
           badge: unpaidCount > 0 ? unpaidCount : undefined,
           badgeColor: 'bg-rose-500 text-white',
         },
         {
           id: 'receipts',
-          label: 'Reçus',
+          label: t('nav.receipts', 'Reçus'),
           icon: ReceiptText,
         },
       ],
     },
     {
-      title: 'SPORT',
+      title: t('nav.sportSection', 'SPORT'),
       items: [
         {
           id: 'sessions',
-          label: 'Séances',
+          label: t('nav.sessions', 'Séances'),
           icon: CalendarDays,
         },
         {
           id: 'attendance',
-          label: 'Présences',
+          label: t('nav.attendance', 'Présences'),
           icon: CheckSquare,
         },
       ],
     },
     {
-      title: 'RAPPORTS',
+      title: t('nav.reportsSection', 'RAPPORTS'),
       items: [
         {
           id: 'reports',
-          label: 'Rapports',
+          label: t('nav.reports', 'Rapports'),
           icon: BarChart3,
         },
       ],
     },
     {
-      title: 'ADMINISTRATION',
+      title: t('nav.adminSection', 'ADMINISTRATION'),
       items: [
         {
           id: 'users',
-          label: 'Utilisateurs',
+          label: t('nav.users', 'Utilisateurs'),
           icon: UserCog,
         },
         {
           id: 'settings',
-          label: 'Paramètres',
+          label: t('nav.settings', 'Paramètres'),
           icon: Settings,
         },
       ],
@@ -210,8 +211,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar container */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 flex flex-col transition-transform duration-200 ease-in-out lg:translate-x-0 ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed top-0 bottom-0 z-50 w-64 bg-slate-900 text-slate-300 flex flex-col transition-transform duration-200 ease-in-out ${
+          isRTL ? 'right-0' : 'left-0'
+        } ${
+          isOpen
+            ? 'translate-x-0'
+            : isRTL
+            ? 'translate-x-full lg:translate-x-0'
+            : '-translate-x-full lg:translate-x-0'
         }`}
       >
         {/* Brand header */}
@@ -233,13 +240,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {settings.shortName}
               </h1>
               <p className="text-[11px] text-emerald-400 font-medium truncate">
-                Gestion Club Foot
+                {t('nav.managementApp', 'Gestion Club Foot')}
               </p>
             </div>
           </div>
           <button
             onClick={() => setIsOpen(false)}
-            className="lg:hidden p-1.5 text-slate-400 hover:text-white rounded-lg"
+            className="lg:hidden p-1.5 text-slate-400 hover:text-white rounded-lg cursor-pointer"
             aria-label="Fermer le menu"
           >
             <X className="w-5 h-5" />
@@ -266,7 +273,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onClick={() => handleNavClick(item.id)}
                       className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                         isActive
-                          ? 'bg-emerald-600 text-white font-semibold'
+                          ? 'bg-emerald-600 text-white font-semibold shadow-xs'
                           : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                       }`}
                     >
@@ -297,8 +304,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Footer */}
         <div className="p-3.5 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between shrink-0">
-          <span className="font-medium text-slate-300">Saison 2026-2027</span>
-          <span className="font-mono text-emerald-400">{settings.currency}</span>
+          <span className="font-medium text-slate-300">
+            {t('nav.seasonBadge', 'Saison 2026-2027')}
+          </span>
+          <span className="font-mono text-emerald-400">
+            {language === 'ar' ? 'د.م' : settings.currency}
+          </span>
         </div>
       </aside>
     </>
